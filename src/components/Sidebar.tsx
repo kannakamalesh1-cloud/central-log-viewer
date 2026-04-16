@@ -26,6 +26,8 @@ interface UserData {
 
 interface SidebarProps {
   userRole: string;
+  selectedServerId: number | null;
+  setSelectedServerId: (id: number | null) => void;
   onSelect: (serverId: number, logType: string, sourceId: string) => void;
   onShowDashboard: () => void;
 }
@@ -33,9 +35,8 @@ interface SidebarProps {
 
 const defaultForm = { name: '', host: '', port: '22', username: '', privateKey: '' };
 
-export default function Sidebar({ userRole, onSelect, onShowDashboard }: SidebarProps) {
+export default function Sidebar({ userRole, selectedServerId, setSelectedServerId, onSelect, onShowDashboard }: SidebarProps) {
   const [servers, setServers] = useState<ServerData[]>([]);
-  const [selectedServer, setSelectedServer] = useState<number | null>(null);
   const [logSources, setLogSources] = useState<LogSource[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
@@ -88,10 +89,10 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
   }, [userRole]);
 
   const fetchSources = () => {
-    if (!selectedServer || !selectedType) { setLogSources([]); setSourceError(null); return; }
+    if (!selectedServerId || !selectedType) { setLogSources([]); setSourceError(null); return; }
     setLoadingSources(true);
     setSourceError(null);
-    fetch(`/api/servers/${selectedServer}/sources?type=${selectedType}`)
+    fetch(`/api/servers/${selectedServerId}/sources?type=${selectedType}`)
       .then(r => r.json())
       .then(data => { 
         if (Array.isArray(data)) {
@@ -110,8 +111,8 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
   
   useEffect(() => {
     fetchSources();
-    if (!selectedServer || !selectedType) setSelectedSource(null);
-  }, [selectedServer, selectedType]);
+    if (!selectedServerId || !selectedType) setSelectedSource(null);
+  }, [selectedServerId, selectedType]);
 
   const refreshSources = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -119,7 +120,7 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
   };
 
   const handleServerChange = (id: number) => {
-    setSelectedServer(id);
+    setSelectedServerId(id);
     setSelectedType(null);
     setSelectedNamespace(null);
     setSelectedSource(null);
@@ -132,7 +133,7 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
       const res = await fetch(`/api/servers/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setConfirmDelete(null);
-        setSelectedServer(null);
+        setSelectedServerId(null);
         setSelectedType(null);
         setSelectedSource(null);
         setLogSources([]);
@@ -170,7 +171,7 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
 
   const handleSourceSelect = (sourceId: string) => {
     setSelectedSource(sourceId);
-    if (selectedServer && selectedType) onSelect(selectedServer, selectedType, sourceId);
+    if (selectedServerId && selectedType) onSelect(selectedServerId, selectedType, sourceId);
   };
 
   const k8sNamespaces = selectedType === 'k8s' 
@@ -363,7 +364,7 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
           <div className="flex gap-2">
             <select
               className="flex-1 bg-zinc-900/50 border border-zinc-700/50 text-white text-sm rounded-xl p-3 outline-none focus:border-purple-500 transition-colors cursor-pointer appearance-none"
-              value={selectedServer || ""}
+              value={selectedServerId || ""}
               onChange={(e) => handleServerChange(Number(e.target.value))}
             >
               <option value="" disabled>Choose a server...</option>
@@ -371,11 +372,11 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
                 <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
               ))}
             </select>
-            {selectedServer && userRole === 'admin' && (
+            {selectedServerId && userRole === 'admin' && (
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => handleEditClick(selectedServer)}
+                  onClick={() => handleEditClick(selectedServerId)}
                   className="p-3 rounded-xl border border-zinc-700/50 bg-zinc-900/50 text-zinc-500 hover:text-purple-400 hover:border-purple-500/30 transition-all flex items-center justify-center"
                   title="Edit server"
                 >
@@ -384,20 +385,20 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirmDelete === selectedServer) {
-                      handleDeleteServer(selectedServer);
+                    if (confirmDelete === selectedServerId) {
+                      handleDeleteServer(selectedServerId);
                     } else {
-                      setConfirmDelete(selectedServer);
+                      setConfirmDelete(selectedServerId);
                     }
                   }}
                   className={`p-3 rounded-xl border transition-all flex items-center justify-center ${
-                    confirmDelete === selectedServer
+                    confirmDelete === selectedServerId
                       ? 'bg-red-500/20 border-red-500/50 text-red-400 font-bold text-[10px] uppercase min-w-[80px]'
                       : 'bg-zinc-900/50 border-zinc-700/50 text-zinc-500 hover:text-red-400 hover:border-red-500/30'
                   }`}
-                  title={confirmDelete === selectedServer ? "Click to confirm deletion" : "Delete server"}
+                  title={confirmDelete === selectedServerId ? "Click to confirm deletion" : "Delete server"}
                 >
-                  {confirmDelete === selectedServer ? "Confirm" : <Trash2 className="w-4 h-4" />}
+                  {confirmDelete === selectedServerId ? "Confirm" : <Trash2 className="w-4 h-4" />}
                 </button>
               </div>
             )}
@@ -413,7 +414,7 @@ export default function Sidebar({ userRole, onSelect, onShowDashboard }: Sidebar
         </div>
 
         {/* Step 2 — Log Type */}
-        {selectedServer && (
+        {selectedServerId && (
           <div className="mb-6 flex flex-col gap-2">
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
               2. Select Log Application

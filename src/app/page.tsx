@@ -20,6 +20,7 @@ export default function Home() {
     logType: null as string | null,
     sourceId: null as string | null
   });
+  const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,8 +102,10 @@ export default function Home() {
 
   return (
     <div className="w-full h-screen bg-[#0a0a0a] flex text-white overflow-hidden bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900 via-[#0a0a0a] to-black">
-       <Sidebar 
+        <Sidebar 
          userRole={userRole}
+         selectedServerId={selectedServerId}
+         setSelectedServerId={setSelectedServerId}
          onSelect={(serverId, logType, sourceId) => {
            setActiveStream({ serverId, logType, sourceId });
            setView('terminal');
@@ -151,8 +154,11 @@ export default function Home() {
           <div className="flex-1 min-h-0 z-10 w-full">
              {view === 'dashboard' ? (
                <Dashboard onSelectServer={(id) => {
-                 // Trigger server selection in sidebar? 
-                 // For now just keep dashboard view but you could auto-switch
+                 setSelectedServerId(id);
+                 // No need to switch view manually, 
+                 // but we ensure the sidebar reflects the selection.
+                 // Actually, if they click a server, let's keep them on dashboard 
+                 // but visually select it, OR switch to sidebar focus.
                }} />
              ) : (
                <TerminalViewer 
