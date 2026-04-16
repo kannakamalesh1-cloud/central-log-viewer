@@ -1,0 +1,19 @@
+[Unit]
+Description=PulseLog Central Log Viewer
+After=network.target
+
+[Service]
+Type=simple
+User=kamalesh
+WorkingDirectory=/home/kamalesh/central-log-viewer
+ExecStart=/usr/bin/node /home/kamalesh/central-log-viewer/server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=development
+Environment=PORT=3000
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pulselog
+
+[Install]
+WantedBy=multi-user.target
