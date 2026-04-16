@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import io, { Socket } from 'socket.io-client';
-import { Search } from 'lucide-react';
+import { Search, Pause, Play, Trash2, Download, CheckCircle2, XCircle, Activity, X } from 'lucide-react';
 
 interface TerminalViewerProps {
   serverId: number | null;
@@ -19,6 +19,11 @@ export default function TerminalViewer({ serverId, logType, sourceId }: Terminal
   const termInstance = useRef<Terminal | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
+  const [isPaused, setIsPaused] = useState(false);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [newWatchKeyword, setNewWatchKeyword] = useState('');
+  const [alertCount, setAlertCount] = useState(0);
+  const logBuffer = useRef<string>('');
 
   // Reset search when source changes
   useEffect(() => {
@@ -66,7 +71,6 @@ export default function TerminalViewer({ serverId, logType, sourceId }: Terminal
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      term.clear();
       term.writeln('\x1b[35m[INFO]\x1b[0m Connected to central log viewer backend.');
       
       if (serverId && logType && sourceId) {
@@ -99,7 +103,35 @@ export default function TerminalViewer({ serverId, logType, sourceId }: Terminal
            safeData = String(safeData);
         }
       }
-      term.write(safeData);
+      
+      // LOG COLORIZATION & ALERTING
+      const colorize = (text: string) => {
+        let painted = text
+          .replace(/(ERROR|FAIL|CRITICAL|FATAL|EXCEPTION)/gi, '\x1b[1;31m$1\x1b[0m')
+          .replace(/(WARN|WARNING|ALERT)/gi, '\x1b[1;33m$1\x1b[0m')
+          .replace(/(INFO|OK|SUCCESS)/gi, '\x1b[32m$1\x1b[0m')
+          .replace(/(DEBUG)/gi, '\x1b[34m$1\x1b[0m');
+
+        // Check Watchlist
+        watchlist.forEach(word => {
+          if (word && text.toLowerCase().includes(word.toLowerCase())) {
+            // Intense highlight for watched words
+            const regex = new RegExp(`(${word})`, 'gi');
+            painted = painted.replace(regex, '\x1b[1;37;41m $1 \x1b[0m'); 
+            setAlertCount(prev => prev + 1);
+          }
+        });
+        
+        return painted;
+      };
+
+      const finalData = colorize(safeData);
+
+      if (isPaused) {
+        logBuffer.current += finalData;
+      } else {
+        term.write(finalData);
+      }
     });
 
     socket.on('disconnect', () => {
@@ -113,40 +145,142 @@ export default function TerminalViewer({ serverId, logType, sourceId }: Terminal
         socketRef.current.disconnect();
       }
     };
-  }, [serverId, logType, sourceId, activeSearch]);
+  }, [serverId, logType, sourceId, activeSearch, isPaused]);
+
+  const downloadLogs = () => {
+    if (!termInstance.current) return;
+    // Extract all lines from the terminal buffer
+    const buffer = termInstance.current.buffer.active;
+    let content = '';
+    for (let i = 0; i < buffer.length; i++) {
+        content += buffer.getLine(i)?.translateToString() + '\n';
+    }
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pulselog_${sourceId || 'extract'}_${new Date().getTime()}.log`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="w-full h-full p-4 bg-white/5 dark:bg-black/40 backdrop-blur-xl border border-white/10 dark:border-white/5 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
        <div className="flex items-center justify-between mb-3 w-full">
-         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-red-400"></div>
             <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
             <div className="w-3 h-3 rounded-full bg-green-400"></div>
-            <span className="ml-2 text-xs font-semibold text-zinc-400 uppercase tracking-widest">
+            <span className="ml-2 text-xs font-semibold text-zinc-400 uppercase tracking-widest flex items-center">
               Live Stream {sourceId ? `- ${sourceId}` : ''}
-              {activeSearch ? ` (Search: ${activeSearch})` : ''}
+              {alertCount > 0 && (
+                <span className="ml-3 px-2 py-0.5 bg-red-500/20 text-red-500 text-[10px] rounded-full border border-red-500/30 animate-pulse flex items-center gap-1">
+                   <Activity className="w-3 h-3" /> {alertCount} Watch Matches
+                </span>
+              )}
             </span>
-         </div>
-         {sourceId && (
+          </div>
+          {sourceId && (
             <div className="flex items-center gap-2">
+               {/* Watchlist Section */}
+               <div className="flex items-center bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-purple-500 transition-all">
+                  <Activity className="w-3.5 h-3.5 text-purple-500 mr-2" />
+                  <input 
+                    type="text" 
+                    value={newWatchKeyword}
+                    onChange={e => setNewWatchKeyword(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && newWatchKeyword) {
+                        setWatchlist([...watchlist, newWatchKeyword.toLowerCase()]);
+                        setNewWatchKeyword('');
+                      }
+                    }}
+                    placeholder="Watch..." 
+                    className="bg-transparent text-white text-xs outline-none w-16 placeholder:text-zinc-600 transition-all focus:w-28"
+                  />
+                  {watchlist.length > 0 && (
+                    <div className="flex items-center gap-1 ml-2 pl-2 border-l border-white/10">
+                      {watchlist.map(w => (
+                        <span key={w} className="flex items-center bg-purple-500/20 text-purple-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-500/30">
+                          {w}
+                          <X className="w-2.5 h-2.5 ml-1 cursor-pointer hover:text-white" onClick={() => setWatchlist(watchlist.filter(x => x !== w))} />
+                        </span>
+                      ))}
+                    </div>
+                  )}
+               </div>
+
+               <div className="w-[1px] h-4 bg-white/10 mx-1"></div>
+
                <input 
                  type="text" 
                  value={searchTerm} 
                  onChange={e => setSearchTerm(e.target.value)}
                  onKeyDown={e => { if(e.key === 'Enter') setActiveSearch(searchTerm) }}
-                 placeholder="Search log stream..." 
-                 className="bg-black/40 border border-white/10 text-white text-xs rounded-lg px-3 py-1.5 outline-none focus:border-purple-500 transition-colors w-48 font-mono"
+                 placeholder="Search logs..." 
+                 className="bg-black/40 border border-white/10 text-white text-xs rounded-xl px-3 py-1.5 outline-none focus:border-purple-500 transition-colors w-32 font-mono"
                />
-               <button 
-                 onClick={() => setActiveSearch(searchTerm)}
-                 className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium rounded-lg px-3 py-1.5 transition-colors flex items-center justify-center"
-                 title="Search"
-               >
-                 <Search className="w-3.5 h-3.5 mr-1" /> Search
-               </button>
+                <button 
+                  onClick={() => setActiveSearch(searchTerm)}
+                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium rounded-xl px-3 py-1.5 transition-colors flex items-center justify-center"
+                  title="Search"
+                >
+                  <Search className="w-3.5 h-3.5 mr-1" /> Search
+                </button>
+
+                <div className="w-[1px] h-4 bg-white/10 mx-1"></div>
+
+                <div className="flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                  <button 
+                    onClick={downloadLogs}
+                    className="p-2 hover:bg-white/10 text-zinc-400 hover:text-blue-400 transition-all border-r border-white/10"
+                    title="Download Logs"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      if (isPaused) {
+                        if (socketRef.current && serverId && logType && sourceId) {
+                          socketRef.current.emit('request_stream', { serverId, logType, sourceId, searchTerm: activeSearch });
+                          if (termInstance.current) {
+                            termInstance.current.writeln('\x1b[32m\n[STREAM RESUMED]\x1b[0m Starting fresh tail...');
+                          }
+                        }
+                        setIsPaused(false);
+                      } else {
+                        if (socketRef.current) {
+                          socketRef.current.emit('disconnect_stream');
+                        }
+                        setIsPaused(true);
+                        if (termInstance.current) {
+                          termInstance.current.writeln('\x1b[33m\n[STREAM STOPPED]\x1b[0m Output frozen.');
+                        }
+                      }
+                    }}
+                    className={`p-2 transition-all border-r border-white/10 ${
+                      isPaused ? 'text-green-400 hover:bg-green-500/10' : 'text-red-400 hover:bg-red-500/10'
+                    }`}
+                    title={isPaused ? "Play" : "Stop"}
+                  >
+                    {isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4" />}
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      termInstance.current?.clear();
+                      setAlertCount(0);
+                    }}
+                    className="p-2 hover:bg-white/10 text-zinc-400 hover:text-red-400 transition-all"
+                    title="Clear Terminal"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
             </div>
-         )}
-       </div>
+          )}
+        </div>
        <div ref={terminalRef} className="flex-1 w-full h-full overflow-hidden" />
     </div>
   );

@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import TerminalViewer from "../components/TerminalViewer";
-import { Terminal, Lock, Eye, EyeOff } from "lucide-react";
+import Dashboard from "../components/Dashboard";
+import { Terminal, Lock, Eye, EyeOff, LayoutDashboard } from "lucide-react";
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -13,7 +14,7 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-
+  const [view, setView] = useState<'dashboard' | 'terminal'>('dashboard');
   const [activeStream, setActiveStream] = useState({
     serverId: null as number | null,
     logType: null as string | null,
@@ -102,7 +103,11 @@ export default function Home() {
     <div className="w-full h-screen bg-[#0a0a0a] flex text-white overflow-hidden bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900 via-[#0a0a0a] to-black">
        <Sidebar 
          userRole={userRole}
-         onSelect={(serverId, logType, sourceId) => setActiveStream({ serverId, logType, sourceId })} 
+         onSelect={(serverId, logType, sourceId) => {
+           setActiveStream({ serverId, logType, sourceId });
+           setView('terminal');
+         }} 
+         onShowDashboard={() => setView('dashboard')}
        />
        
        <main className="flex-1 flex flex-col p-6 h-full relative">
@@ -111,8 +116,12 @@ export default function Home() {
           
           <header className="flex justify-between items-center mb-6 pl-2 z-10 w-full">
             <div>
-               <h2 className="text-2xl font-semibold tracking-tight text-white">Live Stream Interface</h2>
-               <p className="text-zinc-400 text-sm mt-1">Real-time log tailing across your infrastructure.</p>
+               <h2 className="text-2xl font-semibold tracking-tight text-white">
+                 {view === 'dashboard' ? 'Infrastructure Overview' : 'Live Stream Interface'}
+               </h2>
+               <p className="text-zinc-400 text-sm mt-1">
+                 {view === 'dashboard' ? 'Real-time health of your connected nodes.' : `Tailing ${activeStream.sourceId} in real-time.`}
+               </p>
             </div>
             
             <div className="flex items-center gap-4">
@@ -140,11 +149,18 @@ export default function Home() {
           </header>
 
           <div className="flex-1 min-h-0 z-10 w-full">
-             <TerminalViewer 
-                serverId={activeStream.serverId}
-                logType={activeStream.logType}
-                sourceId={activeStream.sourceId}
-             />
+             {view === 'dashboard' ? (
+               <Dashboard onSelectServer={(id) => {
+                 // Trigger server selection in sidebar? 
+                 // For now just keep dashboard view but you could auto-switch
+               }} />
+             ) : (
+               <TerminalViewer 
+                  serverId={activeStream.serverId}
+                  logType={activeStream.logType}
+                  sourceId={activeStream.sourceId}
+               />
+             )}
           </div>
        </main>
     </div>

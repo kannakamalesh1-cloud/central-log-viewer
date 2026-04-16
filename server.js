@@ -296,6 +296,16 @@ app.prepare().then(async () => {
     }
   });
 
+  server.post('/api/servers/test', authenticateToken, requireAdmin, async (req, res) => {
+    const { host, port, username, privateKey } = req.body;
+    try {
+      const result = await SSHController.testConnection({ host, port, username, privateKey });
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ success: false, error: 'Internal testing error' });
+    }
+  });
+
   // Next.js Catch-all
   server.use((req, res) => handle(req, res));
 

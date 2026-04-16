@@ -255,6 +255,36 @@ class SSHController {
       this.conn = null;
     }
   }
+
+  static async testConnection(serverConfig) {
+    const privateKey = SSHController.sanitizeKey(serverConfig.privateKey);
+    
+    if (SSHController.isLocal(serverConfig.host)) {
+      return { success: true, message: 'Local connection is inherently available.' };
+    }
+
+    return new Promise((resolve) => {
+      const conn = new Client();
+      conn.on('ready', () => {
+        conn.end();
+        resolve({ success: true });
+      }).on('error', (err) => {
+        resolve({ success: false, error: err.message });
+      });
+      
+      try {
+        conn.connect({
+          host: serverConfig.host,
+          port: parseInt(serverConfig.port) || 22,
+          username: serverConfig.username,
+          privateKey: privateKey,
+          readyTimeout: 10000 // 10s timeout for testing
+        });
+      } catch (e) {
+        resolve({ success: false, error: e.message });
+      }
+    });
+  }
 }
 
 module.exports = { SSHController };
