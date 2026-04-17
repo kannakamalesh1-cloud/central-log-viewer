@@ -15,16 +15,7 @@ export default function Home() {
   const [error, setError] = useState("");
 
   const [view, setView] = useState<'dashboard' | 'terminal'>('dashboard');
-  const [isSplitView, setIsSplitView] = useState(false);
-  const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
-
-  const [activeStreamA, setActiveStreamA] = useState({
-    serverId: null as number | null,
-    logType: null as string | null,
-    sourceId: null as string | null
-  });
-
-  const [activeStreamB, setActiveStreamB] = useState({
+  const [activeStream, setActiveStream] = useState({
     serverId: null as number | null,
     logType: null as string | null,
     sourceId: null as string | null
@@ -113,79 +104,54 @@ export default function Home() {
   return (
     <div className="w-full h-screen bg-[#0a0a0a] flex text-white overflow-hidden bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900 via-[#0a0a0a] to-black">
         <Sidebar 
-         userRole={userRole}
-         selectedServerId={selectedServerId}
-         setSelectedServerId={setSelectedServerId}
-         activeSlot={activeSlot}
-         setActiveSlot={setActiveSlot}
-         isSplitView={isSplitView}
-         onSelect={(serverId, logType, sourceId) => {
-           if (activeSlot === 'A') {
-             setActiveStreamA({ serverId, logType, sourceId });
-           } else {
-             setActiveStreamB({ serverId, logType, sourceId });
-           }
-           setView('terminal');
-         }} 
-         onShowDashboard={() => setView('dashboard')}
-       />
-       
-       <main className="flex-1 flex flex-col p-6 h-full relative">
-          {/* Background flares */}
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[128px] pointer-events-none" />
-          
-          <header className="flex justify-between items-center mb-6 pl-2 z-10 w-full">
-            <div>
-               <h2 className="text-2xl font-semibold tracking-tight text-white">
-                 {view === 'dashboard' ? 'Infrastructure Overview' : 'Live Stream Interface'}
-               </h2>
-               <p className="text-zinc-400 text-sm mt-1">
-                 {view === 'dashboard' ? 'Real-time health of your connected nodes.' : `Tailing ${activeStream.sourceId} in real-time.`}
-               </p>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium px-3 py-1.5 bg-green-500/10 text-green-400 border border-green-500/20 rounded-full flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-                {activeStreamA.serverId || activeStreamB.serverId ? "Infrastructure Connected" : "Awaiting Selection"}
-              </span>
+          userRole={userRole}
+          selectedServerId={selectedServerId}
+          setSelectedServerId={setSelectedServerId}
+          onSelect={(serverId, logType, sourceId) => {
+            setActiveStream({ serverId, logType, sourceId });
+            setView('terminal');
+          }} 
+          onShowDashboard={() => setView('dashboard')}
+        />
+        
+        <main className="flex-1 flex flex-col p-6 h-full relative">
+           {/* Background flares */}
+           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[128px] pointer-events-none" />
+           
+           <header className="flex justify-between items-center mb-6 pl-2 z-10 w-full">
+             <div>
+                <h2 className="text-2xl font-semibold tracking-tight text-white">
+                  {view === 'dashboard' ? 'Infrastructure Overview' : 'Live Stream Interface'}
+                </h2>
+                <p className="text-zinc-400 text-sm mt-1">
+                  {view === 'dashboard' ? 'Real-time health of your connected nodes.' : `Tailing ${activeStream.sourceId || 'logs'} in real-time.`}
+                </p>
+             </div>
+             
+             <div className="flex items-center gap-4">
+               <span className="text-sm font-medium px-3 py-1.5 bg-green-500/10 text-green-400 border border-green-500/20 rounded-full flex items-center gap-2">
+                 <span className="relative flex h-2 w-2">
+                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                 </span>
+                 {activeStream.serverId ? "Infrastructure Connected" : "Awaiting Selection"}
+               </span>
 
-              {view === 'terminal' && (
-                <button 
-                  onClick={() => {
-                    setIsSplitView(!isSplitView);
-                    if (!isSplitView) setActiveSlot('B'); // Auto-target B if opening split
-                    else setActiveSlot('A');
-                  }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
-                    isSplitView 
-                      ? 'bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-500/20' 
-                      : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  {isSplitView ? 'Close Split' : 'Split View'}
-                </button>
-              )}
-
-              <button 
-                onClick={async () => {
-                  try {
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                  } catch (e) {}
-                  setIsLoggedIn(false);
-                  setUserRole("viewer");
-                  setActiveStream({ serverId: null, logType: null, sourceId: null });
-                }}
-                className="text-sm text-zinc-400 hover:text-white px-3 py-1.5 transition-colors"
-              >
-                Sign Out
-              </button>
-            </div>
-          </header>
+               <button 
+                 onClick={async () => {
+                   try {
+                     await fetch('/api/auth/logout', { method: 'POST' });
+                   } catch (e) {}
+                   setIsLoggedIn(false);
+                   setUserRole("viewer");
+                   setActiveStream({ serverId: null, logType: null, sourceId: null });
+                 }}
+                 className="text-sm text-zinc-400 hover:text-white px-3 py-1.5 transition-colors"
+               >
+                 Sign Out
+               </button>
+             </div>
+           </header>
 
           <div className="flex-1 min-h-0 z-10 w-full">
              {view === 'dashboard' ? (
@@ -193,28 +159,13 @@ export default function Home() {
                  setSelectedServerId(id);
                }} />
              ) : (
-               <div className={`w-full h-full flex gap-4 ${isSplitView ? 'flex-row' : 'flex-col'}`}>
-                  <div className={`h-full transition-all duration-500 ${isSplitView ? 'w-1/2' : 'w-full'}`}>
-                    <TerminalViewer 
-                       serverId={activeStreamA.serverId}
-                       logType={activeStreamA.logType}
-                       sourceId={activeStreamA.sourceId}
-                       isActiveSlot={activeSlot === 'A'}
-                       onSlotClick={() => setActiveSlot('A')}
-                    />
-                  </div>
-                  {isSplitView && (
-                    <div className="w-1/2 h-full animate-in slide-in-from-right duration-500">
-                      <TerminalViewer 
-                         serverId={activeStreamB.serverId}
-                         logType={activeStreamB.logType}
-                         sourceId={activeStreamB.sourceId}
-                         isActiveSlot={activeSlot === 'B'}
-                         onSlotClick={() => setActiveSlot('B')}
-                      />
-                    </div>
-                  )}
-               </div>
+                <div className="w-full h-full">
+                  <TerminalViewer 
+                    serverId={activeStream.serverId}
+                    logType={activeStream.logType}
+                    sourceId={activeStream.sourceId}
+                  />
+                </div>
              )}
           </div>
        </main>

@@ -146,10 +146,11 @@ app.prepare().then(async () => {
         }
       }
 
-      const safeRegex = /^[a-zA-Z0-9_\.\/| -]+$/;
+      const safeRegex = /^[a-zA-Z0-9_\.\/|: -]+$/;
 
       if (!safeRegex.test(logType) || !safeRegex.test(cleanSourceId)) {
-        socket.emit('terminal:data', '\\x1b[31m[SECURITY ERROR] Invalid characters in parameters.\\x1b[0m\\r\\n');
+        const failedParam = !safeRegex.test(logType) ? `logType (${logType})` : `sourceId (${cleanSourceId})`;
+        socket.emit('terminal:data', `\x1b[31m[SECURITY ERROR] Invalid characters in ${failedParam}.\x1b[0m\r\n`);
         return;
       }
       if (searchTerm && /[\;\&\|\`\$\(\)]/.test(searchTerm)) {

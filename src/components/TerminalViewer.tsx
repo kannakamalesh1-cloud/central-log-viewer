@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import io, { Socket } from 'socket.io-client';
-import { Search, Pause, Play, Trash2, Download, CheckCircle2, XCircle, Activity, X } from 'lucide-react';
+import { Search, Pause, Play, Trash2, Download, CheckCircle2, XCircle, Activity, X, ExternalLink } from 'lucide-react';
 
 interface TerminalViewerProps {
   serverId: number | null;
@@ -13,9 +13,10 @@ interface TerminalViewerProps {
   sourceId: string | null;
   isActiveSlot?: boolean;
   onSlotClick?: () => void;
+  onClose?: () => void;
 }
 
-export default function TerminalViewer({ serverId, logType, sourceId, isActiveSlot, onSlotClick }: TerminalViewerProps) {
+export default function TerminalViewer({ serverId, logType, sourceId, isActiveSlot, onSlotClick, onClose }: TerminalViewerProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const termInstance = useRef<Terminal | null>(null);
@@ -27,10 +28,12 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   const [alertCount, setAlertCount] = useState(0);
   const logBuffer = useRef<string>('');
 
-  // Reset search when source changes
+  // Reset search and pause when source changes
   useEffect(() => {
     setSearchTerm('');
     setActiveSearch('');
+    setIsPaused(false);
+    logBuffer.current = '';
   }, [serverId, logType, sourceId]);
 
   useEffect(() => {
@@ -64,9 +67,18 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     };
   }, []);
 
+  const isPausedRef = useRef(isPaused);
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
   useEffect(() => {
     if (!termInstance.current) return;
     const term = termInstance.current;
+    
+    // Clear terminal history on every new connection/source switch
+    term.reset(); 
+    term.clear();
 
     // Connect WebSocket
     const socket = io({ path: '/socket.io' }); 
@@ -129,7 +141,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
 
       const finalData = colorize(safeData);
 
-      if (isPaused) {
+      if (isPausedRef.current) {
         logBuffer.current += finalData;
       } else {
         term.write(finalData);
@@ -147,7 +159,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         socketRef.current.disconnect();
       }
     };
-  }, [serverId, logType, sourceId, activeSearch, isPaused]);
+  }, [serverId, logType, sourceId, activeSearch]);
 
   const downloadLogs = () => {
     if (!termInstance.current) return;
@@ -241,6 +253,18 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
 
                 <div className="flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden">
                   <button 
+                    onClick={() => {
+                      const url = `/terminal?serverId=${serverId}&logType=${logType}&sourceId=${encodeURIComponent(sourceId || '')}`;
+                      window.open(url, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no');
+                      if (onClose) onClose();
+                    }}
+                    className="p-2 hover:bg-white/10 text-zinc-400 hover:text-purple-400 transition-all border-r border-white/10"
+                    title="Pop-out to new window"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+
+                  <button 
                     onClick={downloadLogs}
                     className="p-2 hover:bg-white/10 text-zinc-400 hover:text-blue-400 transition-all border-r border-white/10"
                     title="Download Logs"
@@ -251,21 +275,17 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                   <button 
                     onClick={() => {
                       if (isPaused) {
-                        if (socketRef.current && serverId && logType && sourceId) {
-                          socketRef.current.emit('request_stream', { serverId, logType, sourceId, searchTerm: activeSearch });
-                          if (termInstance.current) {
-                            termInstance.current.writeln('\x1b[32m\n[STREAM RESUMED]\x1b[0m Starting fresh tail...');
-                          }
+                        // Resuming: Flush buffer
+                        if (termInstance.current && logBuffer.current) {
+                          termInstance.current.write(logBuffer.current);
+                          logBuffer.current = '';
                         }
+                        isPausedRef.current = false;
                         setIsPaused(false);
                       } else {
-                        if (socketRef.current) {
-                          socketRef.current.emit('disconnect_stream');
-                        }
+                        // Pausing: Just freeze UI
+                        isPausedRef.current = true;
                         setIsPaused(true);
-                        if (termInstance.current) {
-                          termInstance.current.writeln('\x1b[33m\n[STREAM STOPPED]\x1b[0m Output frozen.');
-                        }
                       }
                     }}
                     className={`p-2 transition-all border-r border-white/10 ${
@@ -286,6 +306,16 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+
+                  {onClose && (
+                    <button 
+                      onClick={onClose}
+                      className="p-2 hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-all border-l border-white/10"
+                      title="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
             </div>
           )}

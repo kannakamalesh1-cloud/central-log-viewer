@@ -122,20 +122,24 @@ case "$CMD" in
         FILE_PATH="$LOG_SOURCE"
         ;;
       "docker")
+        # Strip status suffix if present (anything after :)
+        CLEAN_DOCKER="${LOG_SOURCE%%:*}"
         if [ -n "$ARG3" ]; then
-          docker logs --tail 200 -f "$LOG_SOURCE" 2>&1 | grep --line-buffered -i -e "$ARG3"
+          docker logs --tail 200 -f "$CLEAN_DOCKER" 2>&1 | grep --line-buffered -i -e "$ARG3"
         else
-          docker logs --tail 200 -f "$LOG_SOURCE" 2>&1
+          docker logs --tail 200 -f "$CLEAN_DOCKER" 2>&1
         fi
         exit 0
         ;;
       "k8s")
         if [[ "$LOG_SOURCE" == *"/"* ]]; then
           K8S_NS="${LOG_SOURCE%%/*}"
-          K8S_POD="${LOG_SOURCE#*/}"
+          K8S_POD_FULL="${LOG_SOURCE#*/}"
+          # Strip status suffix if present (anything after :)
+          K8S_POD="${K8S_POD_FULL%%:*}"
           NS_FLAG="-n $K8S_NS"
         else
-          K8S_POD="$LOG_SOURCE"
+          K8S_POD="${LOG_SOURCE%%:*}"
           NS_FLAG=""
         fi
         if [ -n "$ARG3" ]; then
