@@ -135,8 +135,18 @@ app.prepare().then(async () => {
       }
 
       // Strict Input Sanitization - Allow metadata separators in sourceId
-      const cleanSourceId = sourceId.split('|')[0];
-      const safeRegex = /^[a-zA-Z0-9_\.\/-]+$/;
+      let cleanSourceId = sourceId;
+      if (sourceId.includes('|')) {
+        const parts = sourceId.split('|');
+        // If the second part is an absolute path, use it
+        if (parts[1] && parts[1].startsWith('/')) {
+          cleanSourceId = parts[1];
+        } else {
+          cleanSourceId = parts[0];
+        }
+      }
+
+      const safeRegex = /^[a-zA-Z0-9_\.\/| -]+$/;
 
       if (!safeRegex.test(logType) || !safeRegex.test(cleanSourceId)) {
         socket.emit('terminal:data', '\\x1b[31m[SECURITY ERROR] Invalid characters in parameters.\\x1b[0m\\r\\n');

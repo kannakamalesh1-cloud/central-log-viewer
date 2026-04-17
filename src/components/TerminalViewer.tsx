@@ -11,9 +11,11 @@ interface TerminalViewerProps {
   serverId: number | null;
   logType: string | null;
   sourceId: string | null;
+  isActiveSlot?: boolean;
+  onSlotClick?: () => void;
 }
 
-export default function TerminalViewer({ serverId, logType, sourceId }: TerminalViewerProps) {
+export default function TerminalViewer({ serverId, logType, sourceId, isActiveSlot, onSlotClick }: TerminalViewerProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const termInstance = useRef<Terminal | null>(null);
@@ -165,7 +167,14 @@ export default function TerminalViewer({ serverId, logType, sourceId }: Terminal
   };
 
   return (
-    <div className="w-full h-full p-4 bg-white/5 dark:bg-black/40 backdrop-blur-xl border border-white/10 dark:border-white/5 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div 
+      onClick={onSlotClick}
+      className={`w-full h-full p-4 bg-white/5 dark:bg-black/40 backdrop-blur-xl border-2 rounded-2xl shadow-2xl overflow-hidden flex flex-col transition-all duration-300 cursor-default ${
+        isActiveSlot 
+          ? 'border-purple-500/50 ring-4 ring-purple-500/10' 
+          : 'border-white/10 dark:border-white/5 opacity-80'
+      }`}
+    >
        <div className="flex items-center justify-between mb-3 w-full">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-red-400"></div>

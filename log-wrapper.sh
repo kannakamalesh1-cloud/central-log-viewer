@@ -66,45 +66,70 @@ case "$CMD" in
          done
       fi
     fi
+    # 5. System Logs
+    if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "system" ]]; then
+       # Direct check for most common files
+       for f in /var/log/syslog /var/log/messages /var/log/kern.log /var/log/dmesg; do
+         [ -f "$f" ] && echo "system:$(basename "$f")|active"
+       done
+    fi
+
+    # 6. Auth Logs
+    if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "auth" ]]; then
+       for f in /var/log/auth.log /var/log/secure; do
+         [ -f "$f" ] && echo "auth:$(basename "$f")|security"
+       done
+    fi
+
+    # 7. Database Logs
+    if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "database" ]]; then
+       # Look for common DB logs recursively up to 2 levels
+       find /var/log -maxdepth 3 \( -name "*mysql*" -o -name "*postgres*" -o -name "*redis*" -o -name "*mongodb*" \) -type f 2>/dev/null | while read -r log; do
+         echo "database:$(basename "$log")|$log"
+       done
+    fi
+
+    # 8. Custom
+    if [[ "$SCAN_TYPE" == "custom" ]]; then
+       echo "custom:ENTER_CUSTOM_PATH|manual"
+    fi
     ;;
 
   "read-logs")
     LOG_TYPE="$ARG1"
     LOG_SOURCE="$ARG2"
 
-    # Sanitize LOG_SOURCE to prevent command/path injection
-    if [[ ! "$LOG_SOURCE" =~ ^[a-zA-Z0-9_\./-]+$ ]]; then
-      echo "[SECURITY ERROR] Invalid source name format."
-      exit 1
-    fi
-    
     case "$LOG_TYPE" in
-      "nginx")
-        # Ensure file exists
-        if [ ! -f "/var/log/nginx/$LOG_SOURCE" ]; then exit 1; fi
-        if [ -n "$ARG3" ]; then
-          tail -n 200 -f "/var/log/nginx/$LOG_SOURCE" | grep --line-buffered -i -e "$ARG3"
+      "system"|"auth")
+        FILE_PATH="/var/log/$LOG_SOURCE"
+        ;;
+      "database")
+        # For database, the metadata might contain the full path
+        if [[ "$LOG_SOURCE" == /* ]]; then
+           FILE_PATH="$LOG_SOURCE"
         else
-          tail -n 200 -f "/var/log/nginx/$LOG_SOURCE"
+           # Fallback search
+           FILE_PATH=$(find /var/log -maxdepth 3 -name "$LOG_SOURCE" -type f 2>/dev/null | head -n 1)
         fi
         ;;
+      "nginx")
+        FILE_PATH="/var/log/nginx/$LOG_SOURCE"
+        ;;
       "apache")
-        if [ ! -f "/var/log/apache2/$LOG_SOURCE" ]; then exit 1; fi
-        if [ -n "$ARG3" ]; then
-          tail -n 200 -f "/var/log/apache2/$LOG_SOURCE" | grep --line-buffered -i -e "$ARG3"
-        else
-          tail -n 200 -f "/var/log/apache2/$LOG_SOURCE"
-        fi
+        FILE_PATH="/var/log/apache2/$LOG_SOURCE"
+        ;;
+      "custom")
+        FILE_PATH="$LOG_SOURCE"
         ;;
       "docker")
         if [ -n "$ARG3" ]; then
-          docker logs --tail 200 -f "$LOG_SOURCE" | grep --line-buffered -i -e "$ARG3"
+          docker logs --tail 200 -f "$LOG_SOURCE" 2>&1 | grep --line-buffered -i -e "$ARG3"
         else
-          docker logs --tail 200 -f "$LOG_SOURCE"
+          docker logs --tail 200 -f "$LOG_SOURCE" 2>&1
         fi
+        exit 0
         ;;
       "k8s")
-        # Extract namespace if it exists, otherwise default
         if [[ "$LOG_SOURCE" == *"/"* ]]; then
           K8S_NS="${LOG_SOURCE%%/*}"
           K8S_POD="${LOG_SOURCE#*/}"
@@ -113,18 +138,35 @@ case "$CMD" in
           K8S_POD="$LOG_SOURCE"
           NS_FLAG=""
         fi
-
         if [ -n "$ARG3" ]; then
-          kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD" | grep --line-buffered -i -e "$ARG3"
+          kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD" 2>&1 | grep --line-buffered -i -e "$ARG3"
         else
-          kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD"
+          kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD" 2>&1
         fi
+        exit 0
         ;;
       *)
         echo "[SECURITY ERROR] Unknown log type: $LOG_TYPE"
         exit 1
         ;;
     esac
+
+    # Final execution with permission check
+    if [ -f "$FILE_PATH" ]; then
+      if [ ! -r "$FILE_PATH" ]; then
+         echo -e "\x1b[31m[PERMISSION ERROR]\x1b[0m You don't have read access to $FILE_PATH"
+         echo "Try running 'sudo chmod +r $FILE_PATH' on the server."
+         exit 1
+      fi
+      if [ -n "$ARG3" ]; then
+        tail -n 200 -f "$FILE_PATH" 2>&1 | grep --line-buffered -i -e "$ARG3"
+      else
+        tail -n 200 -f "$FILE_PATH" 2>&1
+      fi
+    else
+      echo -e "\x1b[31m[ERROR]\x1b[0m File not found: $FILE_PATH"
+      exit 1
+    fi
     ;;
 
   *)

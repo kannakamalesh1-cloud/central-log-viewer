@@ -28,6 +28,9 @@ interface SidebarProps {
   userRole: string;
   selectedServerId: number | null;
   setSelectedServerId: (id: number | null) => void;
+  activeSlot: 'A' | 'B';
+  setActiveSlot: (slot: 'A' | 'B') => void;
+  isSplitView: boolean;
   onSelect: (serverId: number, logType: string, sourceId: string) => void;
   onShowDashboard: () => void;
 }
@@ -35,7 +38,7 @@ interface SidebarProps {
 
 const defaultForm = { name: '', host: '', port: '22', username: '', privateKey: '' };
 
-export default function Sidebar({ userRole, selectedServerId, setSelectedServerId, onSelect, onShowDashboard }: SidebarProps) {
+export default function Sidebar({ userRole, selectedServerId, setSelectedServerId, activeSlot, setActiveSlot, isSplitView, onSelect, onShowDashboard }: SidebarProps) {
   const [servers, setServers] = useState<ServerData[]>([]);
   const [logSources, setLogSources] = useState<LogSource[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
@@ -62,6 +65,9 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [userForm, setUserForm] = useState({ email: '', password: '', role: 'viewer' });
   const [userSaving, setUserSaving] = useState(false);
+
+  const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
 
   const fetchServers = () => {
     fetch('/api/servers')
@@ -356,22 +362,71 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           <span className="text-sm font-semibold">Dashboard Overview</span>
         </button>
 
+        {isSplitView && (
+          <div className="mb-6 mx-2 p-1 bg-white/5 border border-white/5 rounded-2xl flex gap-1">
+            <button 
+              onClick={() => setActiveSlot('A')}
+              className={`flex-1 flex items-center justify-center py-2.5 rounded-xl text-xs font-bold transition-all ${
+                activeSlot === 'A' 
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' 
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Slot A (Left)
+            </button>
+            <button 
+              onClick={() => setActiveSlot('B')}
+              className={`flex-1 flex items-center justify-center py-2.5 rounded-xl text-xs font-bold transition-all ${
+                activeSlot === 'B' 
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' 
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Slot B (Right)
+            </button>
+          </div>
+        )}
+
         {/* Step 1 — Server */}
         <div className="mb-6 flex flex-col gap-2">
           <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
             1. Select Target Server
           </label>
           <div className="flex gap-2">
-            <select
-              className="flex-1 bg-zinc-900/50 border border-zinc-700/50 text-white text-sm rounded-xl p-3 outline-none focus:border-purple-500 transition-colors cursor-pointer appearance-none"
-              value={selectedServerId || ""}
-              onChange={(e) => handleServerChange(Number(e.target.value))}
-            >
-              <option value="" disabled>Choose a server...</option>
-              {servers.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
-              ))}
-            </select>
+            <div className="flex-1 relative">
+              <button
+                onClick={() => setIsServerDropdownOpen(!isServerDropdownOpen)}
+                className={`w-full flex items-center justify-between bg-zinc-900/80 border text-white text-sm rounded-xl p-3.5 transition-all shadow-2xl backdrop-blur-xl hover:bg-zinc-800/80 ${
+                  isServerDropdownOpen ? 'border-purple-500 ring-2 ring-purple-500/10' : 'border-white/10'
+                }`}
+              >
+                <span className="font-medium truncate max-w-[150px]">
+                  {selectedServerId ? (
+                    servers.find(s => s.id === selectedServerId)?.name || "Server Selected"
+                  ) : "Choose server..."}
+                </span>
+                <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${isServerDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
+              </button>
+
+              {isServerDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#121212] border border-white/10 rounded-2xl shadow-2xl py-3 z-50 max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 backdrop-blur-2xl custom-scrollbar">
+                  {servers.length === 0 ? (
+                    <div className="px-5 py-4 text-xs text-zinc-600 italic">No servers configured</div>
+                  ) : (
+                    servers.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); }}
+                        className={`w-full text-left px-5 py-2.5 text-sm transition-all hover:bg-purple-500/10 hover:text-purple-400 ${selectedServerId === s.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-400'}`}
+                      >
+                        <div className="font-medium">{s.name}</div>
+                        <div className="text-[10px] opacity-60 font-mono mt-0.5">{s.host}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
             {selectedServerId && userRole === 'admin' && (
               <div className="flex gap-2">
                 <button
@@ -419,57 +474,142 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
               2. Select Log Application
             </label>
-            <select
-              className="w-full bg-zinc-900/50 border border-zinc-700/50 text-white text-sm rounded-xl p-3 outline-none focus:border-purple-500 transition-colors cursor-pointer appearance-none"
-              value={selectedType || ""}
-              onChange={(e) => { setSelectedType(e.target.value); setSelectedNamespace(null); }}
-            >
-              <option value="" disabled>Choose application...</option>
-              <option value="nginx">NGINX (Web Server logs)</option>
-              <option value="apache">Apache2 (Web Server logs)</option>
-              <option value="docker">Docker Containers</option>
-              <option value="k8s">Kubernetes Pods</option>
-            </select>
+            <div className="relative">
+              <button
+                onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+                className={`w-full flex items-center justify-between bg-zinc-900/80 border text-white text-sm rounded-xl p-3.5 transition-all shadow-2xl backdrop-blur-xl hover:bg-zinc-800/80 ${
+                  isTypeDropdownOpen ? 'border-purple-500 ring-2 ring-purple-500/10' : 'border-white/10'
+                }`}
+              >
+                <span className="font-medium">
+                  {selectedType ? (
+                    <span className="capitalize">{selectedType.replace('k8s', 'Kubernetes').replace('auth', 'Security')}</span>
+                  ) : "Choose application..."}
+                </span>
+                <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${isTypeDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
+              </button>
+
+              {isTypeDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#121212] border border-white/10 rounded-2xl shadow-2xl py-3 z-50 max-h-[400px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 backdrop-blur-2xl">
+                  <div className="px-4 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-white/5 mb-2">Web & Infrastructure</div>
+                  {[
+                    { id: 'nginx', label: 'NGINX (Web Server)' },
+                    { id: 'apache', label: 'Apache2 (Web Server)' },
+                    { id: 'docker', label: 'Docker Containers' },
+                    { id: 'k8s', label: 'Kubernetes Pods' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
+                      className={`w-full text-left px-5 py-2.5 text-sm transition-all hover:bg-purple-500/10 hover:text-purple-400 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-400'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+
+                  <div className="px-4 py-2 mt-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-white/5 mb-2">System & Security</div>
+                  {[
+                    { id: 'system', label: 'OS System & Kernel' },
+                    { id: 'auth', label: 'Security & Auth' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
+                      className={`w-full text-left px-5 py-2.5 text-sm transition-all hover:bg-purple-500/10 hover:text-purple-400 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-400'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+
+                  <div className="px-4 py-2 mt-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-white/5 mb-2">Databases</div>
+                  {[
+                    { id: 'database', label: 'MySQL / Postgres / Redis' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
+                      className={`w-full text-left px-5 py-2.5 text-sm transition-all hover:bg-purple-500/10 hover:text-purple-400 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-400'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+
+                  <div className="px-4 py-2 mt-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest border-b border-white/5 mb-2">Advanced</div>
+                  {[
+                    { id: 'custom', label: 'Custom File Path' }
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
+                      className={`w-full text-left px-5 py-2.5 text-sm transition-all hover:bg-purple-500/10 hover:text-purple-400 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-400'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* Step 3 — Log Source */}
         {selectedType && (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                3. Select Target Log File / Pod
-              </label>
-              <button
-                onClick={refreshSources}
-                disabled={loadingSources}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
-                title="Refresh list"
-              >
-                <RotateCw className={`w-3.5 h-3.5 ${loadingSources ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+            {selectedType === 'custom' ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                  3. Enter Full Log Path
+                </label>
+                <input 
+                  type="text"
+                  placeholder="/var/log/myapp.log"
+                  className="w-full bg-zinc-900/80 border border-white/10 text-white text-sm rounded-xl p-3.5 outline-none focus:border-purple-500 transition-all font-mono"
+                  onBlur={(e) => {
+                    if (e.target.value) handleSourceSelect(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSourceSelect((e.target as HTMLInputElement).value);
+                  }}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                    3. Select Target Log File / Pod
+                  </label>
+                  <button
+                    onClick={refreshSources}
+                    disabled={loadingSources}
+                    className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
+                    title="Refresh list"
+                  >
+                    <RotateCw className={`w-3.5 h-3.5 ${loadingSources ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </>
+            )}
             {/* Step 3 Logic: K8s Namespace Selection vs Pod/Log Selection */}
             {selectedType === 'k8s' && !selectedNamespace && !loadingSources && !sourceError ? (
               <div className="flex flex-col gap-1.5 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
                 <label className="text-[10px] font-bold text-zinc-600 uppercase mb-1 ml-1 tracking-widest">Select Namespace</label>
                 {k8sNamespaces.map(ns => (
-                  <button
-                    key={ns}
-                    onClick={() => { setSelectedNamespace(ns); setSearchTerm(''); }}
-                    className="w-full text-left text-sm px-4 py-3 rounded-xl border bg-zinc-800/20 border-zinc-700/30 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-all flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
-                        <Activity className="w-4 h-4 text-blue-400" />
+                    <button
+                      key={ns}
+                      onClick={() => { setSelectedNamespace(ns); setSearchTerm(''); }}
+                      className="w-full text-left text-sm px-4 py-3 rounded-xl border bg-zinc-800/20 border-zinc-700/30 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-all flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                          <Activity className="w-4 h-4 text-blue-400" />
+                        </div>
+                        <span className="font-medium">{ns}</span>
                       </div>
-                      <span className="font-medium">{ns}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded-md text-zinc-500">{logSources.filter(s => s.identifier.startsWith(ns + '/')).length} pods</span>
-                       <ChevronRight className="w-4 h-4 text-zinc-600" />
-                    </div>
-                  </button>
+                      <div className="flex items-center gap-2">
+                         <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded-md text-zinc-500">{logSources.filter(s => s.identifier.startsWith(ns + '/')).length} pods</span>
+                         <ChevronRight className="w-4 h-4 text-zinc-600" />
+                      </div>
+                    </button>
                 ))}
                 {k8sNamespaces.length === 0 && (
                    <span className="text-zinc-600 text-xs text-center py-8 italic">No namespaces found</span>

@@ -15,11 +15,21 @@ export default function Home() {
   const [error, setError] = useState("");
 
   const [view, setView] = useState<'dashboard' | 'terminal'>('dashboard');
-  const [activeStream, setActiveStream] = useState({
+  const [isSplitView, setIsSplitView] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
+
+  const [activeStreamA, setActiveStreamA] = useState({
     serverId: null as number | null,
     logType: null as string | null,
     sourceId: null as string | null
   });
+
+  const [activeStreamB, setActiveStreamB] = useState({
+    serverId: null as number | null,
+    logType: null as string | null,
+    sourceId: null as string | null
+  });
+
   const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -106,8 +116,15 @@ export default function Home() {
          userRole={userRole}
          selectedServerId={selectedServerId}
          setSelectedServerId={setSelectedServerId}
+         activeSlot={activeSlot}
+         setActiveSlot={setActiveSlot}
+         isSplitView={isSplitView}
          onSelect={(serverId, logType, sourceId) => {
-           setActiveStream({ serverId, logType, sourceId });
+           if (activeSlot === 'A') {
+             setActiveStreamA({ serverId, logType, sourceId });
+           } else {
+             setActiveStreamB({ serverId, logType, sourceId });
+           }
            setView('terminal');
          }} 
          onShowDashboard={() => setView('dashboard')}
@@ -133,8 +150,27 @@ export default function Home() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                 </span>
-                {activeStream.serverId ? "Ready to Stream" : "Awaiting Selection"}
+                {activeStreamA.serverId || activeStreamB.serverId ? "Infrastructure Connected" : "Awaiting Selection"}
               </span>
+
+              {view === 'terminal' && (
+                <button 
+                  onClick={() => {
+                    setIsSplitView(!isSplitView);
+                    if (!isSplitView) setActiveSlot('B'); // Auto-target B if opening split
+                    else setActiveSlot('A');
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                    isSplitView 
+                      ? 'bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-500/20' 
+                      : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  {isSplitView ? 'Close Split' : 'Split View'}
+                </button>
+              )}
+
               <button 
                 onClick={async () => {
                   try {
@@ -155,17 +191,30 @@ export default function Home() {
              {view === 'dashboard' ? (
                <Dashboard onSelectServer={(id) => {
                  setSelectedServerId(id);
-                 // No need to switch view manually, 
-                 // but we ensure the sidebar reflects the selection.
-                 // Actually, if they click a server, let's keep them on dashboard 
-                 // but visually select it, OR switch to sidebar focus.
                }} />
              ) : (
-               <TerminalViewer 
-                  serverId={activeStream.serverId}
-                  logType={activeStream.logType}
-                  sourceId={activeStream.sourceId}
-               />
+               <div className={`w-full h-full flex gap-4 ${isSplitView ? 'flex-row' : 'flex-col'}`}>
+                  <div className={`h-full transition-all duration-500 ${isSplitView ? 'w-1/2' : 'w-full'}`}>
+                    <TerminalViewer 
+                       serverId={activeStreamA.serverId}
+                       logType={activeStreamA.logType}
+                       sourceId={activeStreamA.sourceId}
+                       isActiveSlot={activeSlot === 'A'}
+                       onSlotClick={() => setActiveSlot('A')}
+                    />
+                  </div>
+                  {isSplitView && (
+                    <div className="w-1/2 h-full animate-in slide-in-from-right duration-500">
+                      <TerminalViewer 
+                         serverId={activeStreamB.serverId}
+                         logType={activeStreamB.logType}
+                         sourceId={activeStreamB.sourceId}
+                         isActiveSlot={activeSlot === 'B'}
+                         onSlotClick={() => setActiveSlot('B')}
+                      />
+                    </div>
+                  )}
+               </div>
              )}
           </div>
        </main>
