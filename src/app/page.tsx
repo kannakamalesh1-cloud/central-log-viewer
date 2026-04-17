@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import TerminalViewer from "../components/TerminalViewer";
 import Dashboard from "../components/Dashboard";
-import { Lock, Eye, EyeOff, User, Activity, Globe, Disc } from "lucide-react";
+import { Lock, Eye, EyeOff, User, Activity, Globe, Disc, Clock, ChevronDown } from "lucide-react";
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -25,6 +25,17 @@ export default function Home() {
   const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
   // 3-state heartbeat: 'running' | 'dying' | 'stopped'
   const [heartbeatStatus, setHeartbeatStatus] = useState<'running' | 'dying' | 'stopped'>('stopped');
+  // Connection history
+  const [recentSources, setRecentSources] = useState<{sourceId: string; logType: string; serverId: number}[]>([]);
+  const [showRecent, setShowRecent] = useState(false);
+
+  // Load connection history from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('pulselog_recent');
+      if (stored) setRecentSources(JSON.parse(stored));
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const verifySession = async () => {
@@ -111,11 +122,29 @@ export default function Home() {
           onSelect={(serverId, logType, sourceId) => {
             setActiveStream({ serverId, logType, sourceId });
             setView('terminal');
+            // Save to connection history
+            setRecentSources(prev => {
+              const filtered = prev.filter(r => r.sourceId !== sourceId).slice(0, 4);
+              const updated = [{ serverId, logType, sourceId }, ...filtered];
+              try { localStorage.setItem('pulselog_recent', JSON.stringify(updated)); } catch {}
+              return updated;
+            });
           }} 
           onShowDashboard={() => setView('dashboard')}
         />
         
-        <main className="flex-1 flex flex-col p-2 h-full relative">
+        <main className="flex-1 flex flex-col p-2 h-full relative overflow-hidden">
+           {/* Ambient Background Glow */}
+           <div className="absolute inset-0 pointer-events-none z-0">
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-violet-600/5 rounded-full blur-[120px]" style={{animation: 'ambientpulse 6s ease-in-out infinite'}} />
+             <div className="absolute bottom-10 right-10 w-[300px] h-[200px] bg-purple-600/4 rounded-full blur-[100px]" style={{animation: 'ambientpulse 8s ease-in-out infinite reverse'}} />
+           </div>
+           <style>{`
+             @keyframes ambientpulse {
+               0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
+               50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); }
+             }
+           `}</style>
            <header className="flex justify-between items-center mb-1.5 px-6 h-10 z-10 w-full">
               {/* Specialized Neon Heartbeat waveform */}
               <div className="flex items-center gap-8 bg-black/40 border border-white/5 rounded-full pl-6 pr-8 py-1 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] h-9 overflow-hidden group">
@@ -172,8 +201,43 @@ export default function Home() {
                  </div>
               </div>
 
-              {/* Action Zone: Log ID + Logout */}
-              <div className="flex items-center gap-6">
+              {/* Action Zone: Recent History + Log ID + Logout */}
+              <div className="flex items-center gap-4">
+                 {/* Connection History */}
+                 <div className="relative">
+                    <button
+                      onClick={() => setShowRecent(r => !r)}
+                      className="flex items-center gap-2 text-zinc-700 hover:text-zinc-400 transition-colors"
+                      title="Recent connections"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <ChevronDown className={`w-3 h-3 transition-transform ${showRecent ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showRecent && (
+                      <div className="absolute right-0 top-8 bg-[#0a0a0a] border border-white/10 rounded-2xl p-2 z-50 min-w-[220px] shadow-2xl">
+                        <p className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-2 py-1.5">Recent Connections</p>
+                        {recentSources.length === 0 ? (
+                          <p className="text-[10px] text-zinc-700 px-3 py-3 text-center">No history yet.<br/><span className="text-zinc-800">Select a log from the sidebar.</span></p>
+                        ) : (
+                          recentSources.map((r, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                setActiveStream({ serverId: r.serverId, logType: r.logType, sourceId: r.sourceId });
+                                setView('terminal');
+                                setShowRecent(false);
+                              }}
+                              className="w-full text-left px-3 py-2 rounded-xl text-[10px] font-bold text-zinc-500 hover:text-white hover:bg-white/5 transition-all truncate"
+                            >
+                              <span className="text-zinc-400">{r.sourceId.split('/').pop()?.toUpperCase()}</span>
+                              <span className="block text-[9px] text-zinc-700 mt-0.5">{r.logType}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                 </div>
+
                  {activeStream.sourceId && (
                     <div className="flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-2xl px-5 h-9 group/id transition-all hover:bg-white/5">
                        <Disc className={`w-3.5 h-3.5 transition-all duration-500 ${heartbeatStatus === 'running' ? 'text-emerald-500 animate-spin' : 'text-zinc-800'}`} />
@@ -185,7 +249,7 @@ export default function Home() {
 
                  <button 
                    onClick={handleLogout} 
-                   className="text-[10px] font-black tracking-[0.2em] text-zinc-700 hover:text-red-500 uppercase transition-all flex items-center gap-2"
+                   className="text-[10px] font-black tracking-[0.2em] text-zinc-700 hover:text-red-500 uppercase transition-all"
                  >
                     Logout
                  </button>
