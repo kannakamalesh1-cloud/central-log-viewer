@@ -14,9 +14,10 @@ interface TerminalViewerProps {
   isActiveSlot?: boolean;
   onSlotClick?: () => void;
   onClose?: () => void;
+  onStatusChange?: (status: 'running' | 'dying' | 'stopped') => void;
 }
 
-export default function TerminalViewer({ serverId, logType, sourceId, isActiveSlot, onSlotClick, onClose }: TerminalViewerProps) {
+export default function TerminalViewer({ serverId, logType, sourceId, isActiveSlot, onSlotClick, onClose, onStatusChange }: TerminalViewerProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const termInstance = useRef<Terminal | null>(null);
@@ -28,9 +29,8 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   const [newWatchKeyword, setNewWatchKeyword] = useState('');
   const [alertCount, setAlertCount] = useState(0);
   const logBuffer = useRef<string>('');
-
-  // Use a Ref for watchlist to allow socket handler to access it without effect re-runs
   const watchlistRef = useRef<string[]>([]);
+
   useEffect(() => {
     watchlistRef.current = watchlist;
   }, [watchlist]);
@@ -42,7 +42,18 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     setWatchlist([]);
     setAlertCount(0);
     logBuffer.current = '';
+    if (onStatusChange) onStatusChange('stopped');
   }, [serverId, logType, sourceId]);
+
+  // Sync pause button with header pulse
+  useEffect(() => {
+    if (onStatusChange) {
+      if (serverId && sourceId && !isPaused) {
+        onStatusChange('running');
+      }
+      // Note: 'dying' → 'stopped' transition is handled inline in the pause button click
+    }
+  }, [isPaused, serverId, sourceId]);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -91,7 +102,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      term.writeln('\x1b[35m[INFO]\x1b[0m Connected to central log viewer backend.');
+      term.writeln('\x1b[35m[INFO]\x1b[0m CONNECTED_TO_STREAMING_NODE...');
       if (serverId && logType && sourceId) {
         socket.emit('request_stream', { serverId, logType, sourceId, searchTerm: activeSearch });
       }
@@ -109,7 +120,6 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
           .replace(/(WARN|WARNING|ALERT)/gi, '\x1b[1;33m$1\x1b[0m')
           .replace(/(INFO|OK|SUCCESS)/gi, '\x1b[32m$1\x1b[0m');
 
-        // Use the Ref here to always have the latest keywords without a socket reconnect
         watchlistRef.current.forEach(word => {
           if (word && text.toLowerCase().includes(word.toLowerCase())) {
             const regex = new RegExp(`(${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
@@ -125,7 +135,10 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
       else term.write(finalData);
     });
 
-    socket.on('disconnect', () => term.writeln('\x1b[31m[OFFLINE]\x1b[0m Lost connection.'));
+    socket.on('disconnect', () => {
+      term.writeln('\x1b[31m[OFFLINE]\x1b[0m Lost connection.');
+      if (onStatusChange) onStatusChange('stopped');
+    });
 
     return () => {
       if (socketRef.current) {
@@ -133,7 +146,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         socketRef.current.disconnect();
       }
     };
-  }, [serverId, logType, sourceId, activeSearch]); // Reconnect only on core filter changes
+  }, [serverId, logType, sourceId, activeSearch]);
 
   const downloadLogs = () => {
     if (!termInstance.current) return;
@@ -174,7 +187,6 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         
         {sourceId && (
           <div className="flex items-center gap-3">
-            {/* Watch Section */}
             <div className="flex items-center bg-black/60 border border-white/10 rounded-2xl px-3 py-2 focus-within:border-purple-500/50 transition-all">
               <Activity className="w-3.5 h-3.5 text-purple-500 mr-2" />
               <input
@@ -204,7 +216,6 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
               )}
             </div>
 
-            {/* Search Section */}
             <div className="flex items-center bg-black/60 border border-white/10 rounded-2xl px-3 py-2 focus-within:border-cyan-500/50 transition-all">
                <Search className="w-3.5 h-3.5 text-cyan-500 mr-2" />
                <input 
@@ -217,12 +228,28 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                  placeholder="SEARCH"
                  className="bg-transparent text-white text-[10px] font-black outline-none w-16 placeholder:text-zinc-700 transition-all focus:w-24 uppercase"
                />
-               <button onClick={() => setActiveSearch(searchTerm)} className="ml-2 text-[10px] font-black text-zinc-500 hover:text-white uppercase transition-colors">Go</button>
             </div>
 
             <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl overflow-hidden p-1 shadow-inner">
               <button onClick={downloadLogs} className="p-2.5 hover:bg-white/5 text-zinc-500 hover:text-cyan-400 border-r border-white/5 transition-all" title="Download Telemetry"><Download className="w-4 h-4" /></button>
-              <button onClick={() => { setIsPaused(!isPaused); if(isPaused && termInstance.current) { termInstance.current.write(logBuffer.current); logBuffer.current = ''; } }} className={`p-2.5 transition-all border-r border-white/5 ${isPaused ? 'text-green-500' : 'text-zinc-500 hover:text-red-400'}`}>{isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4" />}</button>
+              <button onClick={() => {
+                if (isPaused) {
+                  // RESUME
+                  if (termInstance.current && logBuffer.current) {
+                    termInstance.current.write(logBuffer.current);
+                    logBuffer.current = '';
+                  }
+                  setIsPaused(false);
+                  if (onStatusChange) onStatusChange('running');
+                } else {
+                  // PAUSE: trigger dying animation first, then go stopped
+                  setIsPaused(true);
+                  if (onStatusChange) {
+                    onStatusChange('dying');
+                    setTimeout(() => onStatusChange!('stopped'), 2500);
+                  }
+                }
+              }} className={`p-2.5 transition-all border-r border-white/5 ${isPaused ? 'text-green-500' : 'text-zinc-500 hover:text-red-400'}`}>{isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4" />}</button>
               <button 
                 onClick={() => { termInstance.current?.clear(); setAlertCount(0); }} 
                 className="p-2.5 hover:bg-white/5 text-zinc-500 hover:text-red-500 transition-all"
