@@ -184,6 +184,22 @@ app.prepare().then(async () => {
     });
   });
 
+  server.get('/api/auth/verify', async (req, res) => {
+    const token = req.cookies.token;
+    if (!token) return res.json({ authenticated: false });
+
+    // Check blacklist
+    try {
+      const blacklisted = await get('SELECT * FROM jwt_blacklist WHERE token = ?', [token]);
+      if (blacklisted) return res.json({ authenticated: false });
+    } catch (e) {}
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+      if (err) return res.json({ authenticated: false });
+      res.json({ authenticated: true, user: { email: user.email, role: user.role } });
+    });
+  });
+
   server.post('/api/auth/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     const user = await get('SELECT * FROM users WHERE email = ?', [email]);

@@ -423,8 +423,8 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                     }
                   }}
                   className={`p-3 rounded-xl border transition-all flex items-center justify-center ${confirmDelete === selectedServerId
-                      ? 'bg-red-500/20 border-red-500/50 text-red-400 font-bold text-[10px] uppercase min-w-[80px]'
-                      : 'bg-zinc-900/50 border-zinc-700/50 text-zinc-500 hover:text-red-400 hover:border-red-500/30'
+                    ? 'bg-red-500/20 border-red-500/50 text-red-400 font-bold text-[10px] uppercase min-w-[80px]'
+                    : 'bg-zinc-900/50 border-zinc-700/50 text-zinc-500 hover:text-red-400 hover:border-red-500/30'
                     }`}
                   title={confirmDelete === selectedServerId ? "Click to confirm deletion" : "Delete server"}
                 >
@@ -668,38 +668,36 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                       const parts = identifier.split('-');
                       let displayName = identifier;
                       let suffix = '';
-                      
+
                       if (selectedType === 'k8s' && parts.length > 2) {
                         suffix = '-' + parts.pop() + '-' + parts.pop();
                         displayName = identifier.replace(suffix, '');
                         // Check if we popped too much (some names have hyphens)
                         if (suffix.length < 5) { // fallback
-                           displayName = identifier;
-                           suffix = '';
+                          displayName = identifier;
+                          suffix = '';
                         }
                       }
 
-                      const SourceIcon = selectedType === 'k8s' ? Box : 
-                                       selectedType === 'docker' ? Box :
-                                       selectedType === 'database' ? Database : Shield;
+                      const SourceIcon = selectedType === 'k8s' ? Box :
+                        selectedType === 'docker' ? Box :
+                          selectedType === 'database' ? Database : Shield;
 
                       return (
                         <button
                           key={idx}
                           onClick={() => handleSourceSelect(source.identifier)}
-                          className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between ${
-                            selectedSource === source.identifier
+                          className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between ${selectedSource === source.identifier
                               ? 'bg-purple-600/15 border-purple-500/40 text-white shadow-lg shadow-purple-500/5'
                               : 'bg-zinc-900/40 border-white/5 text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 hover:border-white/10'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className={`p-1.5 rounded-lg border transition-colors ${
-                              selectedSource === source.identifier ? 'bg-purple-500/20 border-purple-500/30 text-purple-400' : 'bg-black/40 border-white/5 text-zinc-600 group-hover:text-zinc-400'
-                            }`}>
+                            <div className={`p-1.5 rounded-lg border transition-colors ${selectedSource === source.identifier ? 'bg-purple-500/20 border-purple-500/30 text-purple-400' : 'bg-black/40 border-white/5 text-zinc-600 group-hover:text-zinc-400'
+                              }`}>
                               <SourceIcon className="w-3.5 h-3.5" />
                             </div>
-                            
+
                             <div className="flex flex-col min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold truncate text-[13px] leading-tight tracking-tight">
@@ -718,7 +716,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                               )}
                             </div>
                           </div>
-                          
+
                           {selectedSource === source.identifier ? (
                             <Activity className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
                           ) : (
@@ -854,8 +852,8 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           {/* Test Connection feedback */}
           {testResult && (
             <div className={`flex items-center gap-2 text-xs border rounded-xl px-3 py-2.5 ${testResult.success
-                ? 'bg-green-500/10 border-green-500/20 text-green-400'
-                : 'bg-red-500/10 border-red-500/20 text-red-400'
+              ? 'bg-green-500/10 border-green-500/20 text-green-400'
+              : 'bg-red-500/10 border-red-500/20 text-red-400'
               }`}>
               {testResult.success ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
               <span>{testResult.success ? 'Connection Successful!' : `Failed: ${testResult.error}`}</span>

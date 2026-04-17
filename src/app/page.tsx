@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import TerminalViewer from "../components/TerminalViewer";
 import Dashboard from "../components/Dashboard";
-import { Terminal, Lock, Eye, EyeOff, LayoutDashboard } from "lucide-react";
+import { Lock, Eye, EyeOff, User } from "lucide-react";
 
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [userRole, setUserRole] = useState("viewer");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +24,26 @@ export default function Home() {
 
   const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
 
+  useEffect(() => {
+    const verifySession = async () => {
+      try {
+        const res = await fetch("/api/auth/verify");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated) {
+            setUserRole(data.user.role || "viewer");
+            setIsLoggedIn(true);
+          }
+        }
+      } catch (e) {
+        console.error("Session check failed", e);
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+    verifySession();
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -32,143 +53,100 @@ export default function Home() {
         body: JSON.stringify({ email: username, password })
       });
       if (res.ok) {
-         const data = await res.json();
-         setUserRole(data.role || "viewer");
-         setIsLoggedIn(true);
+        const data = await res.json();
+        setUserRole(data.role || "viewer");
+        setIsLoggedIn(true);
       } else {
-         setError("Invalid credentials");
+        setError("Invalid credentials");
       }
     } catch (e) {
       setError("Failed to connect");
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) { }
+    setIsLoggedIn(false);
+    setUserRole("viewer");
+    setActiveStream({ serverId: null, logType: null, sourceId: null });
+  };
+
+  if (isCheckingSession) return null;
+
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4 relative overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 via-[#0a0a0a] to-black">
-        {/* Decorative background blobs */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[128px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[128px] pointer-events-none" />
-
-        <div className="w-full max-w-md bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in-95 duration-500">
-           <div className="flex flex-col items-center mb-8">
-             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-white/10 flex items-center justify-center mb-4">
-                <Terminal className="w-8 h-8 text-purple-400" />
-             </div>
-             <h1 className="text-2xl font-bold text-white tracking-tight">PulseLog Secure</h1>
-             <p className="text-sm text-zinc-400 mt-2">Centralized Live Log Viewer</p>
-           </div>
-           
-           <form onSubmit={handleLogin} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-zinc-300 ml-1">User</label>
-                <input 
-                  type="text" 
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 text-white rounded-xl px-4 py-3 outline-none focus:border-purple-500 focus:bg-black/60 transition-all font-mono text-sm"
-                />
+      <div className="min-h-screen bg-[#020202] flex items-center justify-center p-4 relative overflow-hidden font-sans">
+        <div className="absolute inset-0 z-0">
+          <div className="absolute top-[15%] left-[-5%] w-[600px] h-[600px] bg-purple-600/20 rounded-full blur-[160px] pointer-events-none" />
+          <div className="absolute bottom-[-5%] right-[-5%] w-[600px] h-[600px] bg-cyan-600/20 rounded-full blur-[140px] pointer-events-none" />
+        </div>
+        <div
+          className="absolute bottom-0 left-[-50%] w-[200%] h-[45vh] z-0 opacity-40 pointer-events-none"
+          style={{
+            backgroundImage: `linear-gradient(to top, #020202 10%, transparent), 
+                              repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(168, 85, 247, 0.5) 40px),
+                              repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(6, 182, 212, 0.5) 40px)`,
+            transform: 'perspective(1000px) rotateX(70deg)',
+            transformOrigin: 'bottom center',
+          }}
+        />
+        <div className="relative z-10 w-full max-w-[440px]">
+          <div className="bg-black/40 backdrop-blur-[50px] border border-white/10 rounded-[48px] p-12 shadow-[0_40px_120px_rgba(0,0,0,0.9)] overflow-hidden">
+            <div className="flex flex-col items-center mb-10">
+              <div className="w-24 h-24 mb-6 relative">
+                <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_15px_rgba(34,211,238,0.7)]">
+                  <defs><linearGradient id="p-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#A855F7" /><stop offset="100%" stopColor="#06B6D4" /></linearGradient></defs>
+                  <circle cx="50" cy="50" r="48" fill="none" stroke="url(#p-logo-grad)" strokeWidth="0.8" strokeDasharray="8 8" className="animate-[spin_40s_linear_infinite]" />
+                  <circle cx="28" cy="40" r="3.5" fill="#A855F7" /> <path d="M28 40 H42" stroke="#A855F7" strokeWidth="1.5" />
+                  <circle cx="22" cy="50" r="3.5" fill="#06B6D4" /> <path d="M22 50 H42" stroke="#06B6D4" strokeWidth="1.5" />
+                  <circle cx="28" cy="60" r="3.5" fill="#A855F7" /> <path d="M28 60 H42" stroke="#A855F7" strokeWidth="1.5" />
+                  <path d="M42 30 V70 M42 30 Q68 30 68 50 Q68 70 42 70" fill="none" stroke="url(#p-logo-grad)" strokeWidth="5.5" strokeLinecap="round" />
+                  <path d="M48 50 L54 50 L57 42 L62 58 L65 50 L72 50" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" rotate="45" className="animate-pulse" />
+                </svg>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-zinc-300 ml-1">Password</label>
-                <div className="relative">
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 text-white rounded-xl px-4 py-3 pr-11 outline-none focus:border-purple-500 focus:bg-black/60 transition-all font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-purple-400 transition-colors focus:outline-none"
-                    tabIndex={-1}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-              
-              {error && <div className="text-red-400 text-sm font-medium text-center">{error}</div>}
-              
-              <button type="submit" className="mt-4 w-full bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl py-3.5 transition-colors flex items-center justify-center gap-2">
-                <Lock className="w-4 h-4" /> Secure Login
-              </button>
-           </form>
+              <h1 className="text-[42px] font-black text-white tracking-[0.2em] mb-1 leading-none uppercase">PULSELOG</h1>
+              <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.5em] mt-3 opacity-90 text-center text-center">High-Tech Infrastructure Monitoring</p>
+            </div>
+            <form onSubmit={handleLogin} className="flex flex-col gap-6">
+              <div className="relative group/field"><div className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-focus-within/field:text-cyan-400"><User className="w-5 h-5" /></div><input type="text" placeholder="Username / Email" value={username} onChange={e => setUsername(e.target.value)} className="w-full bg-[#080808]/80 border border-white/5 rounded-2xl pl-14 pr-4 py-5 text-white text-sm outline-none focus:border-cyan-500/50 transition-all font-mono" /></div>
+              <div className="relative group/field font-sans"><div className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600 transition-colors group-focus-within/field:text-purple-400"><Lock className="w-5 h-5" /></div><input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-[#080808]/80 border border-white/5 rounded-2xl pl-14 pr-12 py-5 text-white text-sm outline-none focus:border-purple-500/50 transition-all font-mono" /><button type="button" onClick={() => setShowPassword(u => !u)} className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition-colors">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></div>
+              <button type="submit" className="mt-4 w-full bg-[#06B6D4] hover:bg-[#22D3EE] text-[#020202] font-black uppercase text-sm tracking-[0.3em] rounded-2xl py-5 transition-all shadow-[0_20px_50px_rgba(6,182,212,0.4)]">SIGN IN</button>
+            </form>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-screen bg-[#0a0a0a] flex text-white overflow-hidden bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-zinc-900 via-[#0a0a0a] to-black">
-        <Sidebar 
-          userRole={userRole}
-          selectedServerId={selectedServerId}
-          setSelectedServerId={setSelectedServerId}
-          onSelect={(serverId, logType, sourceId) => {
-            setActiveStream({ serverId, logType, sourceId });
-            setView('terminal');
-          }} 
-          onShowDashboard={() => setView('dashboard')}
-        />
-        
-        <main className="flex-1 flex flex-col p-6 h-full relative">
-           {/* Background flares */}
-           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[128px] pointer-events-none" />
-           
-           <header className="flex justify-between items-center mb-6 pl-2 z-10 w-full">
-             <div>
-                <h2 className="text-2xl font-semibold tracking-tight text-white">
-                  {view === 'dashboard' ? 'Infrastructure Overview' : 'Live Stream Interface'}
-                </h2>
-                <p className="text-zinc-400 text-sm mt-1">
-                  {view === 'dashboard' ? 'Real-time health of your connected nodes.' : `Tailing ${activeStream.sourceId || 'logs'} in real-time.`}
-                </p>
-             </div>
-             
-             <div className="flex items-center gap-4">
-               <span className="text-sm font-medium px-3 py-1.5 bg-green-500/10 text-green-400 border border-green-500/20 rounded-full flex items-center gap-2">
-                 <span className="relative flex h-2 w-2">
-                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                 </span>
-                 {activeStream.serverId ? "Infrastructure Connected" : "Awaiting Selection"}
-               </span>
+    <div className="fixed inset-0 w-full h-full bg-[#020202] flex text-white overflow-hidden overscroll-none font-sans select-none">
+      <Sidebar
+        userRole={userRole}
+        selectedServerId={selectedServerId}
+        setSelectedServerId={setSelectedServerId}
+        onSelect={(serverId, logType, sourceId) => {
+          setActiveStream({ serverId, logType, sourceId });
+          setView('terminal');
+        }}
+        onShowDashboard={() => setView('dashboard')}
+      />
 
-               <button 
-                 onClick={async () => {
-                   try {
-                     await fetch('/api/auth/logout', { method: 'POST' });
-                   } catch (e) {}
-                   setIsLoggedIn(false);
-                   setUserRole("viewer");
-                   setActiveStream({ serverId: null, logType: null, sourceId: null });
-                 }}
-                 className="text-sm text-zinc-400 hover:text-white px-3 py-1.5 transition-colors"
-               >
-                 Sign Out
-               </button>
-             </div>
-           </header>
+      <main className="flex-1 flex flex-col p-6 h-full relative">
+        <header className="flex justify-between items-center mb-6 pl-2 z-10 w-full">
+          <h2 className="text-2xl font-black tracking-tighter text-white uppercase italic">Infrastructure</h2>
+          <button onClick={handleLogout} className="text-[10px] font-black tracking-widest text-zinc-600 hover:text-white uppercase transition-colors">Logout</button>
+        </header>
 
-          <div className="flex-1 min-h-0 z-10 w-full">
-             {view === 'dashboard' ? (
-               <Dashboard onSelectServer={(id) => {
-                 setSelectedServerId(id);
-               }} />
-             ) : (
-                <div className="w-full h-full">
-                  <TerminalViewer 
-                    serverId={activeStream.serverId}
-                    logType={activeStream.logType}
-                    sourceId={activeStream.sourceId}
-                  />
-                </div>
-             )}
-          </div>
-       </main>
+        <div className="flex-1 min-h-0 z-10 w-full">
+          {view === 'dashboard' ? (
+            <div className="h-full overflow-auto"><Dashboard onSelectServer={(id) => setSelectedServerId(id)} /></div>
+          ) : (
+            <TerminalViewer serverId={activeStream.serverId} logType={activeStream.logType} sourceId={activeStream.sourceId} />
+          )}
+        </div>
+      </main>
     </div>
   );
 }

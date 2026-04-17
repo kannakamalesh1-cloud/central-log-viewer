@@ -31,10 +31,10 @@ export default function Dashboard({ onSelectServer }: DashboardProps) {
       const serverRes = await fetch('/api/servers');
       const serversData = await serverRes.json();
       setServers(serversData);
-      
+
       const userRes = await fetch('/api/users');
       const usersData = await userRes.json();
-      
+
       setStats({
         totalServers: serversData.length,
         activeUsers: Array.isArray(usersData) ? usersData.length : 0,
@@ -94,8 +94,8 @@ export default function Dashboard({ onSelectServer }: DashboardProps) {
 
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-500">Connected Servers</h2>
-        <button 
-          onClick={fetchData} 
+        <button
+          onClick={fetchData}
           disabled={loading}
           className="p-2 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white transition-all disabled:opacity-50"
         >
@@ -110,14 +110,14 @@ export default function Dashboard({ onSelectServer }: DashboardProps) {
         </div>
       ) : servers.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/5 rounded-3xl text-zinc-500 bg-white/[0.02]">
-           <Activity className="w-12 h-12 mb-4 opacity-20" />
-           <p className="text-sm font-medium">No servers added to the cluster yet.</p>
-           <p className="text-xs mt-1">Add your first server in the sidebar to begin monitoring.</p>
+          <Activity className="w-12 h-12 mb-4 opacity-20" />
+          <p className="text-sm font-medium">No servers added to the cluster yet.</p>
+          <p className="text-xs mt-1">Add your first server in the sidebar to begin monitoring.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
           {servers.map(server => (
-            <div 
+            <div
               key={server.id}
               onClick={() => onSelectServer(server.id)}
               className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl transition-all hover:bg-white/[0.08] hover:border-white/20 hover:translate-y-[-4px] cursor-pointer group"
