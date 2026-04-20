@@ -318,7 +318,7 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
           <div className="bg-black/40 backdrop-blur-2xl border border-white/10 rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
             <div className="overflow-x-auto custom-scrollbar max-h-[500px]">
               <table className="w-full text-left text-sm text-zinc-300 border-collapse">
-                <thead className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/[0.02] text-zinc-500 sticky top-0 backdrop-blur-md z-10 shadow-sm border-b border-white/5">
+                <thead className="text-[10px] font-black uppercase tracking-[0.2em] bg-[#0a0a0a] text-zinc-500 sticky top-0 z-10 shadow-sm border-b border-white/5">
                   <tr>
                     <th className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('timestamp')}>
                       <div className="flex items-center gap-1">Timestamp {sortConfig.key === 'timestamp' && (sortConfig.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}</div>
