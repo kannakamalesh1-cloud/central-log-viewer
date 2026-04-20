@@ -38,6 +38,17 @@ function initDB() {
         username TEXT,
         privateKey TEXT,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Audit Logs Table
+      db.run(`CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userEmail TEXT,
+        serverId INTEGER,
+        serverName TEXT,
+        logType TEXT,
+        sourceId TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
       )`, (err) => {
         if (err) return reject(err);
         

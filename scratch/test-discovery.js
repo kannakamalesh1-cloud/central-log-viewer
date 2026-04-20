@@ -1,8 +1,21 @@
 const { SSHController } = require('../src/lib/ssh-client.js');
 const { initDB, get } = require('../src/lib/db.js');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex') : Buffer.alloc(32);
+const SECURE_KEY_PATH = process.env.SECURE_KEY_PATH || path.join(process.env.HOME || '/home/kamalesh', '.pulselog_key');
+let ENCRYPTION_KEY;
+
+if (fs.existsSync(SECURE_KEY_PATH)) {
+  const keyHex = fs.readFileSync(SECURE_KEY_PATH, 'utf8').trim();
+  ENCRYPTION_KEY = Buffer.from(keyHex, 'hex');
+} else if (process.env.ENCRYPTION_KEY) {
+  ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+} else {
+  ENCRYPTION_KEY = Buffer.alloc(32);
+}
+
 const IV_LENGTH = 16;
 
 function decrypt(text) {

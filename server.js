@@ -25,7 +25,22 @@ const handle = app.getRequestHandler();
 
 // Security Configuration
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex') : crypto.randomBytes(32);
+
+// Load encryption key from a secure location if possible
+const SECURE_KEY_PATH = process.env.SECURE_KEY_PATH || path.join(process.env.HOME || '/home/kamalesh', '.pulselog_key');
+let ENCRYPTION_KEY;
+
+if (fs.existsSync(SECURE_KEY_PATH)) {
+  const keyHex = fs.readFileSync(SECURE_KEY_PATH, 'utf8').trim();
+  ENCRYPTION_KEY = Buffer.from(keyHex, 'hex');
+  console.log(`> Encryption key loaded from secure location: ${SECURE_KEY_PATH}`);
+} else if (process.env.ENCRYPTION_KEY) {
+  ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+  console.warn('\x1b[33m[SECURITY WARNING] Encryption key loaded from .env file. This is less secure. Please move it to ~/.pulselog_key\x1b[0m');
+} else {
+  ENCRYPTION_KEY = crypto.randomBytes(32);
+  console.log('> Generated new ephemeral encryption key');
+}
 const IV_LENGTH = 16;
 
 function encrypt(text) {
@@ -167,6 +182,13 @@ app.prepare().then(async () => {
 
         if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
 
+        try {
+            await dbRun('INSERT INTO audit_logs (userEmail, serverId, serverName, logType, sourceId) VALUES (?, ?, ?, ?, ?)',
+               [socket.user.email, serverId, serverConfig.name, logType, sourceId]);
+        } catch (auditErr) {
+            console.error('Failed to write audit log', auditErr);
+        }
+
         if (activeSSH) activeSSH.disconnect();
         activeSSH = new SSHController(socket);
 
@@ -202,7 +224,10 @@ app.prepare().then(async () => {
 
   server.post('/api/auth/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
-    const user = await get('SELECT * FROM users WHERE email = ?', [email]);
+    if (!email || !password) return res.status(400).json({ error: 'Invalid credentials' });
+    
+    const normalizedEmail = email.toLowerCase();
+    const user = await get('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
 
     if (user && bcrypt.compareSync(password, user.passwordHash)) {
       const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '12h' });
@@ -224,6 +249,16 @@ app.prepare().then(async () => {
     res.json({ success: true });
   });
 
+  // Audit Logs API - ADMIN ONLY
+  server.get('/api/audit', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const logs = await all('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 1000');
+      res.json(logs);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to fetch audit logs' });
+    }
+  });
+
   // User Management APIs - ADMIN ONLY
   server.get('/api/users', authenticateToken, requireAdmin, async (req, res) => {
     const users = await all('SELECT id, email, role, createdAt FROM users');
@@ -235,8 +270,9 @@ app.prepare().then(async () => {
     if (!email || !password) return res.status(400).json({ error: 'User and password required' });
     
     try {
+      const normalizedEmail = email.toLowerCase();
       const hash = bcrypt.hashSync(password, 12);
-      await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, role || 'viewer']);
+      await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [normalizedEmail, hash, role || 'viewer']);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'User already exists or database error' });
@@ -341,19 +377,28 @@ app.prepare().then(async () => {
       console.log(`> Secure log viewer ready on http://${hostname}:${port}`);
     });
 
-    // Database Backup Routine (Every 24 hours)
+    // Database Backup and Pruning Routine (Every 24 hours)
     const backupDir = path.resolve(__dirname, 'data/backups');
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
-    setInterval(async () => {
+    const runMaintenance = async () => {
+      // 1. Prune Old Audit Logs (older than 90 days)
+      try {
+        const result = await dbRun("DELETE FROM audit_logs WHERE timestamp < datetime('now', '-90 days')");
+        if (result.changes > 0) console.log(`> Maintenance: Pruned ${result.changes} old audit logs.`);
+      } catch (e) {
+        console.error('> Maintenance Error: Failed to prune audit logs', e);
+      }
+
+      // 2. Backup Database
       const dbFile = path.resolve(__dirname, 'data/database.sqlite');
       if (fs.existsSync(dbFile)) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupFile = path.join(backupDir, `database-${timestamp}.sqlite`);
         fs.copyFileSync(dbFile, backupFile);
-        console.log(`> Automated database backup created: ${backupFile}`);
+        console.log(`> Maintenance: Database backup created at ${backupFile}`);
 
-        // Prune backups older than 7 days
+        // 3. Prune Old Backups (older than 7 days)
         const files = fs.readdirSync(backupDir);
         const now = Date.now();
         files.forEach(file => {
@@ -364,7 +409,11 @@ app.prepare().then(async () => {
           }
         });
       }
-    }, 24 * 60 * 60 * 1000);
+    };
+
+    // Run once on startup, then every 24 hours
+    runMaintenance();
+    setInterval(runMaintenance, 24 * 60 * 60 * 1000);
   }).catch((ex) => {
     console.error(ex.stack);
     process.exit(1);

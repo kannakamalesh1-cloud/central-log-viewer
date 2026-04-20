@@ -54,8 +54,20 @@ Create a `.env` file in the root directory:
 ```env
 PORT=3000
 JWT_SECRET=your_ultra_secure_jwt_secret
-ENCRYPTION_KEY=64_char_hex_key_for_aes_encryption
+# ENCRYPTION_KEY can be here, but for better security, PulseLog looks for ~/.pulselog_key
 ```
+
+### 4. Security Hardening (Recommended)
+To fully secure your instance:
+1. **Restrict Permissions**: Run `chmod 600 .env data/database.sqlite` and `chmod 700 data`.
+2. **External Encryption Key**: Move your `ENCRYPTION_KEY` from `.env` to a file outside the project root:
+   ```bash
+   # Extract key from .env and save to secure location
+   grep ENCRYPTION_KEY .env | cut -d'=' -f2 > ~/.pulselog_key
+   chmod 600 ~/.pulselog_key
+   # Now remove ENCRYPTION_KEY from .env
+   ```
+   PulseLog will automatically detect this file.
 
 ### 4. Target Server Preparation
 For each server you want to monitor, PulseLog requires the `log-wrapper.sh` script to be present:
