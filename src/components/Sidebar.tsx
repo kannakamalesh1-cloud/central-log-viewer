@@ -28,14 +28,15 @@ interface SidebarProps {
   userRole: string;
   selectedServerId: number | null;
   setSelectedServerId: (id: number | null) => void;
-  onSelect: (serverId: number, logType: string, sourceId: string) => void;
+  activeSourceId: string | null;
+  onSelect: (serverId: number, logType: string, sourceId: string, serverName: string) => void;
   onShowDashboard: () => void;
 }
 
 
 const defaultForm = { name: '', host: '', port: '22', username: '', privateKey: '' };
 
-export default function Sidebar({ userRole, selectedServerId, setSelectedServerId, onSelect, onShowDashboard }: SidebarProps) {
+export default function Sidebar({ userRole, selectedServerId, setSelectedServerId, activeSourceId, onSelect, onShowDashboard }: SidebarProps) {
   const [servers, setServers] = useState<ServerData[]>([]);
   const [logSources, setLogSources] = useState<LogSource[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
@@ -129,6 +130,11 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
     }
   }, [selectedServerId]);
 
+  // Sync selectedSource with prop from parent
+  useEffect(() => {
+    if (activeSourceId) setSelectedSource(activeSourceId);
+  }, [activeSourceId]);
+
   const refreshSources = (e: React.MouseEvent) => {
     e.stopPropagation();
     fetchSources();
@@ -187,7 +193,10 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const handleSourceSelect = (sourceId: string, type: string) => {
     setSelectedSource(sourceId);
     setSelectedType(type);
-    if (selectedServerId) onSelect(selectedServerId, type, sourceId);
+    if (selectedServerId) {
+      const srv = servers.find(s => s.id === selectedServerId);
+      onSelect(selectedServerId, type, sourceId, srv?.name || 'Server');
+    }
   };
 
   const filteredSources = logSources.filter(source => {

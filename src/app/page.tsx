@@ -25,9 +25,19 @@ export default function Home() {
   const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
   // 3-state heartbeat: 'running' | 'dying' | 'stopped'
   const [heartbeatStatus, setHeartbeatStatus] = useState<'running' | 'dying' | 'stopped'>('stopped');
-  // Connection history
-  const [recentSources, setRecentSources] = useState<{sourceId: string; logType: string; serverId: number}[]>([]);
+  const [recentSources, setRecentSources] = useState<{sourceId: string; logType: string; serverId: number; serverName?: string}[]>([]);
   const [showRecent, setShowRecent] = useState(false);
+
+  // Helper to add/move source to recent list
+  const addToRecent = (serverId: number, logType: string, sourceId: string, serverName: string) => {
+    setRecentSources(prev => {
+      // Identity is serverId + sourceId to avoid collisions across servers
+      const filtered = prev.filter(r => !(r.sourceId === sourceId && r.serverId === serverId)).slice(0, 4);
+      const updated = [{ serverId, logType, sourceId, serverName }, ...filtered];
+      try { localStorage.setItem('pulselog_recent', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
 
   // Load connection history from localStorage on mount
   useEffect(() => {
@@ -119,16 +129,12 @@ export default function Home() {
           userRole={userRole}
           selectedServerId={selectedServerId}
           setSelectedServerId={setSelectedServerId}
-          onSelect={(serverId, logType, sourceId) => {
+          activeSourceId={activeStream.sourceId}
+          onSelect={(serverId, logType, sourceId, serverName) => {
             setActiveStream({ serverId, logType, sourceId });
+            setSelectedServerId(serverId); // Ensure server is selected in sidebar too
             setView('terminal');
-            // Save to connection history
-            setRecentSources(prev => {
-              const filtered = prev.filter(r => r.sourceId !== sourceId).slice(0, 4);
-              const updated = [{ serverId, logType, sourceId }, ...filtered];
-              try { localStorage.setItem('pulselog_recent', JSON.stringify(updated)); } catch {}
-              return updated;
-            });
+            addToRecent(serverId, logType, sourceId, serverName);
           }} 
           onShowDashboard={() => setView('dashboard')}
         />
@@ -145,7 +151,7 @@ export default function Home() {
                50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); }
              }
            `}</style>
-           <header className="flex justify-between items-center mb-1.5 px-6 h-10 z-10 w-full">
+           <header className="flex justify-between items-center mb-1.5 px-6 h-10 z-50 w-full">
               {/* Specialized Neon Heartbeat waveform */}
               <div className="flex items-center gap-8 bg-black/40 border border-white/5 rounded-full pl-6 pr-8 py-1 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] h-9 overflow-hidden group">
                  <div className="flex items-center gap-3">
@@ -207,33 +213,66 @@ export default function Home() {
                  <div className="relative">
                     <button
                       onClick={() => setShowRecent(r => !r)}
-                      className="flex items-center gap-2 text-zinc-700 hover:text-zinc-400 transition-colors"
+                      className={`flex items-center gap-2 transition-all ${showRecent ? 'text-purple-400' : 'text-zinc-500 hover:text-zinc-200'}`}
                       title="Recent connections"
                     >
                       <Clock className="w-3.5 h-3.5" />
                       <ChevronDown className={`w-3 h-3 transition-transform ${showRecent ? 'rotate-180' : ''}`} />
                     </button>
                     {showRecent && (
-                      <div className="absolute right-0 top-8 bg-[#0a0a0a] border border-white/10 rounded-2xl p-2 z-50 min-w-[220px] shadow-2xl">
-                        <p className="text-[9px] font-black text-zinc-700 uppercase tracking-widest px-2 py-1.5">Recent Connections</p>
-                        {recentSources.length === 0 ? (
-                          <p className="text-[10px] text-zinc-700 px-3 py-3 text-center">No history yet.<br/><span className="text-zinc-800">Select a log from the sidebar.</span></p>
-                        ) : (
-                          recentSources.map((r, i) => (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                setActiveStream({ serverId: r.serverId, logType: r.logType, sourceId: r.sourceId });
-                                setView('terminal');
-                                setShowRecent(false);
-                              }}
-                              className="w-full text-left px-3 py-2 rounded-xl text-[10px] font-bold text-zinc-500 hover:text-white hover:bg-white/5 transition-all truncate"
+                      <div className="absolute right-0 top-10 w-64 bg-black/80 backdrop-blur-3xl border border-white/10 rounded-[20px] shadow-[0_25px_80px_rgba(0,0,0,0.8)] z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em]">History</span>
+                          {recentSources.length > 0 && (
+                            <button 
+                              onClick={() => { setRecentSources([]); localStorage.removeItem('pulselog_recent'); }}
+                              className="text-[8px] font-bold text-zinc-600 hover:text-red-400 transition-colors uppercase tracking-widest"
                             >
-                              <span className="text-zinc-400">{r.sourceId.split('/').pop()?.toUpperCase()}</span>
-                              <span className="block text-[9px] text-zinc-700 mt-0.5">{r.logType}</span>
+                              Clear
                             </button>
-                          ))
-                        )}
+                          )}
+                        </div>
+                        
+                        <div className="max-h-[280px] overflow-y-auto p-1 custom-scrollbar">
+                          {recentSources.length === 0 ? (
+                            <div className="py-8 flex flex-col items-center justify-center opacity-40">
+                              <Clock className="w-6 h-6 text-zinc-700 mb-2 stroke-[1px]" />
+                              <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest text-center px-4">
+                                No activity yet
+                              </p>
+                            </div>
+                          ) : (
+                            recentSources.map((r, i) => (
+                              <button
+                                key={`${r.serverId}-${r.sourceId}`}
+                                onClick={() => {
+                                  setActiveStream({ serverId: r.serverId, logType: r.logType, sourceId: r.sourceId });
+                                  setSelectedServerId(r.serverId);
+                                  setView('terminal');
+                                  addToRecent(r.serverId, r.logType, r.sourceId, r.serverName || 'Server');
+                                  setShowRecent(false);
+                                }}
+                                className="w-full group/item flex items-center gap-2.5 p-2 rounded-xl hover:bg-white/[0.05] transition-all text-left mb-0.5 last:mb-0"
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-white/[0.03] border border-white/5 flex items-center justify-center group-hover/item:bg-purple-500/10 group-hover/item:border-purple-500/20 transition-all">
+                                  <Disc className="w-3 h-3 text-zinc-600 group-hover/item:text-purple-400 group-hover/item:animate-spin" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-bold text-zinc-300 group-hover/item:text-white truncate">
+                                      {r.sourceId.split('/').pop()?.toUpperCase()}
+                                    </span>
+                                    <span className="text-[7px] font-black text-purple-500/40 uppercase tracking-tighter shrink-0">{r.logType}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <Globe className="w-2 h-2 text-zinc-700" />
+                                    <span className="text-[8px] font-bold text-zinc-600 truncate">{r.serverName || 'Server'}</span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
                       </div>
                     )}
                  </div>
@@ -256,7 +295,7 @@ export default function Home() {
               </div>
            </header>
 
-           <div className="flex-1 min-h-0 z-10 w-full pb-3 px-2">
+           <div className="flex-1 min-h-0 z-0 w-full pb-3 px-2">
               {view === 'dashboard' ? (
                 <div className="h-full overflow-auto p-4"><Dashboard onSelectServer={(id) => setSelectedServerId(id)} /></div>
               ) : (
