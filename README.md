@@ -1,6 +1,6 @@
 # 🫀 PulseLog — Cinematic Infrastructure Log Monitoring
 
-![PulseLog Dashboard](./dashboard-mockup.png)
+![PulseLog Dashboard](./dashboard-screenshot.png)
 
 **PulseLog** is a high-performance, centralized log monitoring system designed for modern infrastructure. Built with a cinematic, high-tech aesthetic, it provides real-time streaming of system, container, and application logs via secure SSH tunnels.
 
