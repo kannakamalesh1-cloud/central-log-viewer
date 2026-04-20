@@ -130,7 +130,7 @@ app.prepare().then(async () => {
 
     socket.on('request_stream', async ({ serverId, logType, sourceId, searchTerm }) => {
       if (!serverId || !logType || !sourceId) {
-        socket.emit('terminal:data', '\\x1b[31m[ERROR] Invalid stream request.\\x1b[0m\\r\\n');
+        socket.emit('terminal:data', '\x1b[31m[ERROR] Invalid stream request.\x1b[0m\r\n');
         return;
       }
 
@@ -154,14 +154,14 @@ app.prepare().then(async () => {
         return;
       }
       if (searchTerm && /[\;\&\|\`\$\(\)]/.test(searchTerm)) {
-        socket.emit('terminal:data', '\\x1b[31m[SECURITY ERROR] Shell metacharacters forbidden in search.\\x1b[0m\\r\\n');
+        socket.emit('terminal:data', '\x1b[31m[SECURITY ERROR] Shell metacharacters forbidden in search.\x1b[0m\r\n');
         return;
       }
 
       try {
         const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
         if (!serverConfig) {
-          socket.emit('terminal:data', '\\x1b[31m[ERROR] Server not found.\\x1b[0m\\r\\n');
+          socket.emit('terminal:data', '\x1b[31m[ERROR] Server not found.\x1b[0m\r\n');
           return;
         }
 
@@ -175,7 +175,7 @@ app.prepare().then(async () => {
         activeSSH.connectAndStream(serverConfig, commandStr);
 
       } catch (err) {
-        socket.emit('terminal:data', `\\x1b[31m[ERROR] Database lookup failed.\\x1b[0m\\r\\n`);
+        socket.emit('terminal:data', '\x1b[31m[ERROR] Database lookup failed.\x1b[0m\r\n');
       }
     });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield } from 'lucide-react';
+import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown } from 'lucide-react';
 
 interface ServerData {
   id: number;
@@ -44,6 +44,16 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNamespace, setSelectedNamespace] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    system: false,
+    auth: false,
+    docker: false,
+    k8s: false,
+    nginx: false,
+    apache: false,
+    database: false,
+    other: false
+  });
 
   // Add Server Panel state
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -64,7 +74,6 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const [userSaving, setUserSaving] = useState(false);
 
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
-  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
 
   const fetchServers = () => {
     fetch('/api/servers')
@@ -92,10 +101,10 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   }, [userRole]);
 
   const fetchSources = () => {
-    if (!selectedServerId || !selectedType) { setLogSources([]); setSourceError(null); return; }
+    if (!selectedServerId) { setLogSources([]); setSourceError(null); return; }
     setLoadingSources(true);
     setSourceError(null);
-    fetch(`/api/servers/${selectedServerId}/sources?type=${selectedType}`)
+    fetch(`/api/servers/${selectedServerId}/sources`)
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -114,8 +123,11 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
   useEffect(() => {
     fetchSources();
-    if (!selectedServerId || !selectedType) setSelectedSource(null);
-  }, [selectedServerId, selectedType]);
+    if (!selectedServerId) {
+      setSelectedSource(null);
+      setSelectedType(null);
+    }
+  }, [selectedServerId]);
 
   const refreshSources = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -172,18 +184,15 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
     }
   };
 
-  const handleSourceSelect = (sourceId: string) => {
+  const handleSourceSelect = (sourceId: string, type: string) => {
     setSelectedSource(sourceId);
-    if (selectedServerId && selectedType) onSelect(selectedServerId, selectedType, sourceId);
+    setSelectedType(type);
+    if (selectedServerId) onSelect(selectedServerId, type, sourceId);
   };
-
-  const k8sNamespaces = selectedType === 'k8s'
-    ? Array.from(new Set(logSources.map(s => s.identifier.split('/')[0]))).sort()
-    : [];
 
   const filteredSources = logSources.filter(source => {
     const matchesSearch = source.identifier.toLowerCase().includes(searchTerm.toLowerCase());
-    if (selectedType === 'k8s' && selectedNamespace) {
+    if (source.type === 'k8s' && selectedNamespace) {
       return matchesSearch && source.identifier.startsWith(selectedNamespace + '/');
     }
     return matchesSearch;
@@ -312,6 +321,10 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   };
   const openUserPanel = () => { setShowUserPanel(true); setShowAddPanel(false); };
   const closeUserPanel = () => { setShowUserPanel(false); };
+
+  const toggleSection = (type: string) => {
+    setExpandedSections(prev => ({ ...prev, [type]: !prev[type] }));
+  };
 
 
   return (
@@ -443,289 +456,248 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           )}
         </div>
 
-        {/* Step 2 — Log Type */}
+        {/* Step 2 — Unified Log Selection */}
         {selectedServerId && (
-          <div className="mb-6 flex flex-col gap-2">
-            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              2. Select Log Application
-            </label>
-            <div className="relative">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                2. Select Log Target
+              </label>
               <button
-                onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
-                className={`w-full flex items-center justify-between bg-zinc-900/80 border text-white text-sm rounded-xl p-3.5 transition-all shadow-2xl backdrop-blur-xl hover:bg-zinc-800/80 ${isTypeDropdownOpen ? 'border-purple-500 ring-2 ring-purple-500/10' : 'border-white/10'
-                  }`}
+                onClick={refreshSources}
+                disabled={loadingSources}
+                className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
+                title="Refresh list"
               >
-                <span className="font-medium">
-                  {selectedType ? (
-                    <span className="capitalize">{selectedType.replace('k8s', 'Kubernetes').replace('auth', 'Security')}</span>
-                  ) : "Choose application..."}
-                </span>
-                <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${isTypeDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
+                <RotateCw className={`w-3.5 h-3.5 ${loadingSources ? 'animate-spin' : ''}`} />
               </button>
-
-              {isTypeDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900/95 border border-white/10 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-2 z-[100] max-h-[450px] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-3xl custom-scrollbar border-t-white/20">
-                  <div className="px-4 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 opacity-50">
-                    <LayoutDashboard className="w-3 h-3" />
-                    Web & Infrastructure
-                  </div>
-                  {[
-                    { id: 'nginx', label: 'NGINX', desc: 'Web Server', icon: Activity },
-                    { id: 'apache', label: 'Apache2', desc: 'Web Server', icon: Activity },
-                    { id: 'docker', label: 'Docker', desc: 'Containers', icon: Box },
-                    { id: 'k8s', label: 'Kubernetes', desc: 'Cluster Pods', icon: Cloud }
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-white/5 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-300'}`}
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedType === opt.id ? 'bg-purple-400/10 border-purple-400/20' : 'bg-black/20 border-white/5'}`}>
-                        <opt.icon className={`w-4 h-4 ${selectedType === opt.id ? 'text-purple-400' : 'text-zinc-500'}`} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-semibold leading-none">{opt.label}</span>
-                        <span className="text-[10px] text-zinc-500 mt-1 opacity-70">{opt.desc}</span>
-                      </div>
-                    </button>
-                  ))}
-
-                  <div className="px-4 py-2 mt-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 opacity-50 border-t border-white/5 pt-3">
-                    <Lock className="w-3 h-3" />
-                    System & Security
-                  </div>
-                  {[
-                    { id: 'system', label: 'Core System', desc: 'Kernel & Logs', icon: Settings },
-                    { id: 'auth', label: 'Security', desc: 'Authentication', icon: Shield }
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-white/5 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-300'}`}
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedType === opt.id ? 'bg-emerald-400/10 border-emerald-400/20' : 'bg-black/20 border-white/5'}`}>
-                        <opt.icon className={`w-4 h-4 ${selectedType === opt.id ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-semibold leading-none">{opt.label}</span>
-                        <span className="text-[10px] text-zinc-500 mt-1 opacity-70">{opt.desc}</span>
-                      </div>
-                    </button>
-                  ))}
-
-                  <div className="px-4 py-2 mt-3 text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 opacity-50 border-t border-white/5 pt-3">
-                    <Settings className="w-3 h-3" />
-                    Advanced Utilities
-                  </div>
-                  {[
-                    { id: 'database', label: 'Databases', desc: 'MySQL / Postgres' },
-                    { id: 'custom', label: 'Custom Path', desc: 'Manual File Entry' }
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      onClick={() => { setSelectedType(opt.id); setSelectedNamespace(null); setSelectedSource(null); setIsTypeDropdownOpen(false); }}
-                      className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-white/5 ${selectedType === opt.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-300'}`}
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedType === opt.id ? 'bg-blue-400/10 border-blue-400/20' : 'bg-black/20 border-white/5'}`}>
-                        {opt.id === 'database' ? <Activity className="w-4 h-4 text-zinc-500" /> : <Plus className="w-4 h-4 text-zinc-500" />}
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-semibold leading-none">{opt.label}</span>
-                        <span className="text-[10px] text-zinc-500 mt-1 opacity-70">{opt.desc}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
-          </div>
-        )}
 
-        {/* Step 3 — Log Source */}
-        {selectedType && (
-          <div className="flex flex-col gap-2">
-            {selectedType === 'custom' ? (
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                  3. Enter Full Log Path
-                </label>
+            {/* Search Bar */}
+            {!loadingSources && !sourceError && logSources.length > 0 && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
                 <input
                   type="text"
-                  placeholder="/var/log/myapp.log"
-                  className="w-full bg-zinc-900/80 border border-white/10 text-white text-sm rounded-xl p-3.5 outline-none focus:border-purple-500 transition-all font-mono"
-                  onBlur={(e) => {
-                    if (e.target.value) handleSourceSelect(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSourceSelect((e.target as HTMLInputElement).value);
-                  }}
+                  placeholder="Search logs, containers, pods..."
+                  className="w-full bg-zinc-900/30 border border-zinc-700/30 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 outline-none focus:border-purple-500/50 focus:bg-zinc-900/60 transition-all placeholder:text-zinc-600"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                    3. Select Target Log File / Pod
-                  </label>
-                  <button
-                    onClick={refreshSources}
-                    disabled={loadingSources}
-                    className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
-                    title="Refresh list"
-                  >
-                    <RotateCw className={`w-3.5 h-3.5 ${loadingSources ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-              </>
             )}
-            {/* Step 3 Logic: K8s Namespace Selection vs Pod/Log Selection */}
-            {selectedType === 'k8s' && !selectedNamespace && !loadingSources && !sourceError ? (
-              <div className="flex flex-col gap-1.5 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
-                <label className="text-[10px] font-bold text-zinc-600 uppercase mb-1 ml-1 tracking-widest">Select Namespace</label>
-                {k8sNamespaces.map(ns => (
-                  <button
-                    key={ns}
-                    onClick={() => { setSelectedNamespace(ns); setSearchTerm(''); }}
-                    className="w-full text-left text-sm px-4 py-3 rounded-xl border bg-zinc-800/20 border-zinc-700/30 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-all flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
-                        <Activity className="w-4 h-4 text-blue-400" />
-                      </div>
-                      <span className="font-medium">{ns}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded-md text-zinc-500">{logSources.filter(s => s.identifier.startsWith(ns + '/')).length} pods</span>
-                      <ChevronRight className="w-4 h-4 text-zinc-600" />
-                    </div>
-                  </button>
-                ))}
-                {k8sNamespaces.length === 0 && (
-                  <span className="text-zinc-600 text-xs text-center py-8 italic">No namespaces found</span>
-                )}
+
+            {loadingSources ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-10 border border-white/5 rounded-xl bg-black/10">
+                <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
+                <span className="text-xs text-zinc-500 font-medium">Scanning server for logs...</span>
+              </div>
+            ) : sourceError ? (
+              <div className="flex flex-col items-center gap-2 text-red-400 text-xs py-8 px-4 border border-red-500/10 rounded-xl bg-red-500/5 text-center">
+                <AlertCircle className="w-5 h-5 mb-1 opacity-80" />
+                <span className="font-bold uppercase tracking-widest text-[10px]">Discovery Failed</span>
+                <span className="text-zinc-500 leading-relaxed font-mono text-[11px] max-w-[200px] break-words">{sourceError}</span>
+                <button
+                  onClick={fetchSources}
+                  className="mt-3 px-4 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all text-[11px] font-semibold"
+                >
+                  Try again
+                </button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {/* Search & Back Header */}
-                {!loadingSources && !sourceError && logSources.length > 0 && (
-                  <div className="flex flex-col gap-2 mb-1">
-                    {selectedNamespace && (
-                      <button
-                        onClick={() => { setSelectedNamespace(null); setSelectedSource(null); setSearchTerm(''); }}
-                        className="flex items-center gap-2 text-[10px] font-bold text-purple-400 hover:text-purple-300 uppercase tracking-widest transition-colors mb-1 ml-1 w-fit"
-                      >
-                        <ChevronRight className="w-3 h-3 rotate-180" />
-                        Back to Namespaces
-                      </button>
-                    )}
-
-                    {/* Only show search for non-k8s or when k8s namespace is selected */}
-                    {(selectedType !== 'k8s' || selectedNamespace) && (
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
-                        <input
-                          type="text"
-                          placeholder={selectedNamespace ? `Search pods in ${selectedNamespace}...` : `Search ${selectedType}...`}
-                          className="w-full bg-zinc-900/30 border border-zinc-700/30 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 outline-none focus:border-purple-500/50 focus:bg-zinc-900/60 transition-all placeholder:text-zinc-600"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {loadingSources ? (
-                  <div className="flex flex-col items-center justify-center gap-3 py-10 border border-white/5 rounded-xl bg-black/10">
-                    <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
-                    <span className="text-xs text-zinc-500 font-medium">Scanning for {selectedType} logs...</span>
-                  </div>
-                ) : sourceError ? (
-                  <div className="flex flex-col items-center gap-2 text-red-400 text-xs py-8 px-4 border border-red-500/10 rounded-xl bg-red-500/5 text-center">
-                    <AlertCircle className="w-5 h-5 mb-1 opacity-80" />
-                    <span className="font-bold uppercase tracking-widest text-[10px]">Discovery Failed</span>
-                    <span className="text-zinc-500 leading-relaxed font-mono text-[11px] max-w-[200px] break-words">{sourceError}</span>
-                    <button
-                      onClick={() => { setSelectedType(null); setSelectedNamespace(null); }}
-                      className="mt-3 px-4 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all text-[11px] font-semibold"
-                    >
-                      Try again
-                    </button>
+              <div className="flex flex-col gap-0.5 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar pb-10">
+                {logSources.length === 0 ? (
+                  <div className="py-8 text-center border border-dashed border-zinc-800 rounded-xl">
+                    <span className="text-zinc-600 text-xs">No logs discovered on this server</span>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1.5 max-h-[320px] overflow-y-auto pr-1 custom-scrollbar">
-                    {filteredSources.length === 0 && (
-                      <div className="py-8 text-center border border-dashed border-zinc-800 rounded-xl">
-                        <span className="text-zinc-600 text-xs">No items match your search</span>
-                      </div>
-                    )}
-                    {filteredSources.map((source, idx) => {
-                      const identifier = selectedType === 'k8s' && source.identifier.includes('/')
-                        ? source.identifier.split('/')[1]
-                        : source.identifier;
+                  <>
+                    {(() => {
+                      const groups = filteredSources.reduce((acc, s) => {
+                        const type = s.type || 'other';
+                        if (!acc[type]) acc[type] = [];
+                        acc[type].push(s);
+                        return acc;
+                      }, {} as Record<string, LogSource[]>);
 
-                      // Logic to split pod names if they have K8s hash suffixes (e.g. -7f58b7f8b9-x2j4l)
-                      const parts = identifier.split('-');
-                      let displayName = identifier;
-                      let suffix = '';
+                      const typeConfig: Record<string, { label: string, icon: any, color: string }> = {
+                        docker: { label: 'Docker Containers', icon: Box, color: 'text-blue-400' },
+                        k8s: { label: 'Kubernetes Pods', icon: Cloud, color: 'text-cyan-400' },
+                        nginx: { label: 'NGINX Logs', icon: Activity, color: 'text-emerald-400' },
+                        apache: { label: 'Apache2 Logs', icon: Activity, color: 'text-orange-400' },
+                        system: { label: 'Core System', icon: Settings, color: 'text-zinc-400' },
+                        auth: { label: 'Security Logs', icon: Shield, color: 'text-red-400' },
+                        database: { label: 'Database Logs', icon: Database, color: 'text-yellow-400' },
+                        other: { label: 'Other Logs', icon: Activity, color: 'text-zinc-500' }
+                      };
 
-                      if (selectedType === 'k8s' && parts.length > 2) {
-                        suffix = '-' + parts.pop() + '-' + parts.pop();
-                        displayName = identifier.replace(suffix, '');
-                        // Check if we popped too much (some names have hyphens)
-                        if (suffix.length < 5) { // fallback
-                          displayName = identifier;
-                          suffix = '';
-                        }
-                      }
+                      const sortedTypes = Object.keys(groups).sort((a, b) => {
+                        const order = ['system', 'auth', 'docker', 'k8s', 'nginx', 'apache', 'database'];
+                        const idxA = order.indexOf(a);
+                        const idxB = order.indexOf(b);
+                        if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+                        if (idxA === -1) return 1;
+                        if (idxB === -1) return -1;
+                        return idxA - idxB;
+                      });
 
-                      const SourceIcon = selectedType === 'k8s' ? Box :
-                        selectedType === 'docker' ? Box :
-                          selectedType === 'database' ? Database : Shield;
+                      const sections = sortedTypes.map(type => {
+                        const config = typeConfig[type] || typeConfig.other;
+                        const Icon = config.icon;
+                        const sources = groups[type];
+                        const isExpanded = expandedSections[type];
 
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => handleSourceSelect(source.identifier)}
-                          className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center justify-between ${selectedSource === source.identifier
-                              ? 'bg-purple-600/15 border-purple-500/40 text-white shadow-lg shadow-purple-500/5'
-                              : 'bg-zinc-900/40 border-white/5 text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 hover:border-white/10'
-                            }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className={`p-1.5 rounded-lg border transition-colors ${selectedSource === source.identifier ? 'bg-purple-500/20 border-purple-500/30 text-purple-400' : 'bg-black/40 border-white/5 text-zinc-600 group-hover:text-zinc-400'
-                              }`}>
-                              <SourceIcon className="w-3.5 h-3.5" />
-                            </div>
+                        if (type === 'k8s' && !selectedNamespace && !searchTerm) {
+                          const namespaces = Array.from(new Set(sources.map(s => s.identifier.split('/')[0]))).sort();
+                          return (
+                            <div key={type} className="flex flex-col gap-1 mb-1">
+                              <button
+                                onClick={() => toggleSection(type)}
+                                className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-1.5 h-3.5 bg-cyan-500 rounded-full transition-transform group-hover:scale-y-125`} />
+                                  <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest leading-none">{config.label}</span>
+                                </div>
+                                <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
 
-                            <div className="flex flex-col min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold truncate text-[13px] leading-tight tracking-tight">
-                                  {displayName}
-                                </span>
-                                {source.status?.toLowerCase().includes('running') && (
-                                  <span className="flex-shrink-0 px-1 py-0.5 rounded-[4px] bg-green-500/10 border border-green-500/20 text-[9px] font-black text-green-500 uppercase tracking-tighter">
-                                    Live
-                                  </span>
-                                )}
-                              </div>
-                              {suffix && (
-                                <span className="text-[10px] text-zinc-600 font-mono truncate opacity-60">
-                                  {suffix.startsWith('-') ? suffix.substring(1) : suffix}
-                                </span>
+                              {isExpanded && (
+                                <div className="flex flex-col gap-1.5 pl-1.5 animate-in slide-in-from-top-1 duration-200">
+                                  {namespaces.map(ns => (
+                                    <button
+                                      key={ns}
+                                      onClick={() => setSelectedNamespace(ns)}
+                                      className="w-full text-left text-[12px] px-3 py-3 rounded-xl border bg-white/[0.02] border-white/5 text-zinc-300 hover:bg-white/[0.05] hover:text-white transition-all flex items-center justify-between group"
+                                    >
+                                      <div className="flex items-center gap-2.5">
+                                        <Cloud className="w-4 h-4 text-cyan-500/60" />
+                                        <span className="font-bold">{ns}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-500 font-bold">{sources.filter(s => s.identifier.startsWith(ns + '/')).length}</span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-700" />
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                          </div>
+                          );
+                        }
 
-                          {selectedSource === source.identifier ? (
-                            <Activity className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                          ) : (
-                            <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600" />
-                          )}
-                        </button>
+                        const displaySources = (type === 'k8s' && selectedNamespace && !searchTerm)
+                          ? sources.filter(s => s.identifier.startsWith(selectedNamespace + '/'))
+                          : sources;
+
+                        if (displaySources.length === 0) return null;
+
+                        return (
+                          <div key={type} className="flex flex-col gap-1 mb-1">
+                            <button
+                              onClick={() => toggleSection(type)}
+                              className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all"
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-1.5 h-3.5 bg-white/20 rounded-full transition-transform group-hover:scale-y-125`} style={{ backgroundColor: config.color.includes('text-') ? undefined : config.color }} />
+                                  <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest leading-none">{config.label}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {type === 'k8s' && selectedNamespace && !searchTerm && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setSelectedNamespace(null); }}
+                                      className="text-[10px] font-bold text-cyan-500 hover:text-cyan-400 uppercase tracking-tighter"
+                                    >
+                                      Close {selectedNamespace}
+                                    </button>
+                                  )}
+                                  <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                </div>
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="flex flex-col gap-1.5 pl-1.5 animate-in slide-in-from-top-1 duration-200">
+                                {displaySources.map((source, idx) => {
+                                  let displayName = source.identifier;
+                                  let suffix = '';
+                                  if (type === 'k8s') {
+                                    const nameOnly = source.identifier.split('/')[1] || source.identifier;
+                                    const parts = nameOnly.split('-');
+                                    if (parts.length > 2) {
+                                      suffix = '-' + parts.pop() + '-' + parts.pop();
+                                      displayName = nameOnly.replace(suffix, '');
+                                    } else {
+                                      displayName = nameOnly;
+                                    }
+                                  }
+
+                                  return (
+                                    <button
+                                      key={idx}
+                                      onClick={() => handleSourceSelect(source.identifier, source.type)}
+                                      className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between ${selectedSource === source.identifier
+                                        ? 'bg-purple-600/15 border-purple-500/40 text-white shadow-lg shadow-purple-500/5'
+                                        : 'bg-white/[0.02] border-white/5 text-zinc-300 hover:bg-white/[0.05] hover:text-white hover:border-white/10'
+                                        }`}
+                                    >
+                                      <div className="flex items-center gap-3.5 min-w-0">
+                                        <div className={`p-2 rounded-lg border transition-colors ${selectedSource === source.identifier
+                                          ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
+                                          : `bg-black/40 border-white/5 ${config.color} opacity-60 group-hover:opacity-100`
+                                          }`}>
+                                          <Icon className="w-4 h-4" />
+                                        </div>
+
+                                        <div className="flex flex-col min-w-0">
+                                          <div className="flex items-center gap-2.5">
+                                            <span className="font-bold truncate text-[13.5px] leading-tight tracking-tight font-sans">
+                                              {displayName}
+                                            </span>
+                                            {(() => {
+                                              const status = source.status?.toLowerCase() || '';
+                                              // More flexible check for active states (including files)
+                                              const isLive = /running|up|active|security|healthy|file/i.test(status);
+                                              if (!isLive) return null;
+
+                                              return (
+                                                <div className="relative flex items-center gap-2">
+                                                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.9)] animate-pulse" />
+                                                  <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Live</span>
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+                                          {suffix && (
+                                            <span className="text-[10px] text-zinc-600 font-mono truncate opacity-60 mt-0.5">
+                                              {suffix.startsWith('-') ? suffix.substring(1) : suffix}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {selectedSource === source.identifier ? (
+                                        <Activity className="w-4 h-4 text-purple-400 animate-pulse" />
+                                      ) : (
+                                        <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+
+                      return (
+                        <>
+                          {sections}
+                        </>
                       );
-                    })}
-                  </div>
+                    })()}
+                  </>
                 )}
               </div>
             )}
@@ -849,104 +821,123 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
               <span>{saveError}</span>
             </div>
           )}
-          {/* Test Connection feedback */}
-          {testResult && (
-            <div className={`flex items-center gap-2 text-xs border rounded-xl px-3 py-2.5 ${testResult.success
-              ? 'bg-green-500/10 border-green-500/20 text-green-400'
-              : 'bg-red-500/10 border-red-500/20 text-red-400'
-              }`}>
-              {testResult.success ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-              <span>{testResult.success ? 'Connection Successful!' : `Failed: ${testResult.error}`}</span>
-            </div>
-          )}
-
           {saveStatus === 'success' && (
             <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/10 border border-green-500/20 rounded-xl px-3 py-2.5">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              <span>Server added successfully!</span>
+              <span>Server {editingId ? 'updated' : 'added'} successfully!</span>
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex flex-col gap-2 mt-2">
-            <button
-              type="button"
-              disabled={testing || saving || saveStatus === 'success'}
-              onClick={handleTestConnection}
-              className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white font-semibold rounded-xl py-3 transition-all flex items-center justify-center gap-2 text-sm border border-white/5"
-            >
-              {testing ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</> : <><KeyRound className="w-4 h-4" /> Test Connection</>}
-            </button>
+          {/* Test Button */}
+          <button
+            type="button"
+            onClick={handleTestConnection}
+            disabled={testing || saving}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all text-xs font-bold disabled:opacity-50"
+          >
+            {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+            Test Connection
+          </button>
 
-            <button
-              type="submit"
-              disabled={saving || saveStatus === 'success'}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900/50 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-3 transition-all flex items-center justify-center gap-2 text-sm"
-            >
-              {saving ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> {editingId ? 'Saving...' : 'Connecting...'}</>
-              ) : saveStatus === 'success' ? (
-                <><CheckCircle2 className="w-4 h-4" /> {editingId ? 'Updated!' : 'Added!'}</>
-              ) : (
-                <>{editingId ? <><Settings className="w-4 h-4" /> Save Changes</> : <><Plus className="w-4 h-4" /> Add Server</>}</>
-              )}
-            </button>
-          </div>
+          {testResult && (
+            <div className={`text-[10px] px-3 py-2 rounded-lg border flex flex-col gap-1 ${testResult.success ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+              <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
+                {testResult.success ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {testResult.success ? 'Test Successful' : 'Test Failed'}
+              </div>
+              {!testResult.success && <span className="font-mono opacity-80 break-words">{testResult.error}</span>}
+            </div>
+          )}
 
-          {/* Security note */}
-          <div className="flex items-start gap-2 text-[10px] text-zinc-600 bg-white/3 border border-white/5 rounded-xl p-3">
-            <Lock className="w-3 h-3 mt-0.5 flex-shrink-0 text-zinc-500" />
-            <span>Connections use SSH key authentication. Your private key is encrypted with AES-256-GCM before being stored and never leaves this server.</span>
-          </div>
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={saving}
+            className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            {editingId ? 'Update Server' : 'Save Server'}
+          </button>
         </form>
       </div>
 
       {/* User Management Panel */}
-      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-black/60 backdrop-blur-3xl border-r border-white/10 transition-transform duration-300 ${showUserPanel ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-black/60 backdrop-blur-2xl border-r border-white/10 transition-transform duration-300 ${showUserPanel ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500/20 rounded-xl border border-blue-500/30">
-              <KeyRound className="w-5 h-5 text-blue-400" />
+              <Users className="w-5 h-5 text-blue-400" />
             </div>
-            <h2 className="text-sm font-bold text-white">Manage Users</h2>
+            <div>
+              <h2 className="text-sm font-bold text-white">User Access</h2>
+              <p className="text-xs text-zinc-500">Manage team permissions</p>
+            </div>
           </div>
-          <button onClick={closeUserPanel} className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-500">
+          <button onClick={closeUserPanel} className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-          <form onSubmit={handleAddUser} className="flex flex-col gap-3">
-            <label className="text-[10px] font-bold text-zinc-500 uppercase">Add New Account</label>
-            <input
-              value={userForm.email}
-              onChange={e => setUserForm({ ...userForm, email: e.target.value })}
-              placeholder="User identifier"
-              className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
-            />
-            <input
-              type="password"
-              value={userForm.password}
-              onChange={e => setUserForm({ ...userForm, password: e.target.value })}
-              placeholder="Password"
-              className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
-            />
-            <button disabled={userSaving} className="w-full bg-blue-600 py-2.5 rounded-xl text-white text-sm font-bold shadow-lg shadow-blue-900/20 transition-all active:scale-[0.98]">
-              {userSaving ? 'Adding...' : 'Create Account'}
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+          <form onSubmit={handleAddUser} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Email Address</label>
+              <input
+                type="email"
+                required
+                value={userForm.email}
+                onChange={e => setUserForm({ ...userForm, email: e.target.value })}
+                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+                placeholder="user@example.com"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Password</label>
+              <input
+                type="password"
+                required
+                value={userForm.password}
+                onChange={e => setUserForm({ ...userForm, password: e.target.value })}
+                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+                placeholder="••••••••"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Role</label>
+              <select
+                value={userForm.role}
+                onChange={e => setUserForm({ ...userForm, role: e.target.value })}
+                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+              >
+                <option value="viewer">Viewer (Read Only)</option>
+                <option value="admin">Admin (Full Control)</option>
+              </select>
+            </div>
+            <button
+              type="submit"
+              disabled={userSaving}
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
+            >
+              {userSaving ? 'Adding...' : 'Add User'}
             </button>
           </form>
 
-          <div className="flex flex-col gap-3">
-            <label className="text-[10px] font-bold text-zinc-500 uppercase">Existing Users</label>
+          <div className="space-y-3">
+            <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Active Users</h3>
             {users.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/5 rounded-xl group">
-                <div className="flex flex-col">
-                  <span className="text-sm text-white font-medium">{u.email}</span>
-                  <span className="text-[10px] text-zinc-500">{u.role} • Joined {new Date(u.createdAt).toLocaleDateString()}</span>
+              <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-white truncate">{u.email}</span>
+                  <span className={`text-[9px] uppercase font-black tracking-tighter ${u.role === 'admin' ? 'text-purple-400' : 'text-zinc-500'}`}>{u.role}</span>
                 </div>
-                <button onClick={() => handleDeleteUser(u.id)} className="p-2 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all">
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {u.role !== 'admin' && (
+                  <button
+                    onClick={() => handleDeleteUser(u.id)}
+                    className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import io, { Socket } from 'socket.io-client';
+import { io, Socket } from 'socket.io-client';
 import { Search, Pause, Play, Trash2, Download, Activity, X } from 'lucide-react';
 
 interface TerminalViewerProps {
@@ -146,7 +146,13 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         return p;
       };
 
-      const finalData = colorize(safeData);
+      // Ensure all literal escapes are converted to actual control chars
+      const cleanData = safeData
+        .replace(/\\x1b/g, '\x1b')
+        .replace(/\\r/g, '\r')
+        .replace(/\\n/g, '\n');
+
+      const finalData = colorize(cleanData);
       if (isPausedRef.current) logBuffer.current += finalData;
       else term.write(finalData);
     });

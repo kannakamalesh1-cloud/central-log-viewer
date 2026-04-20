@@ -162,7 +162,7 @@ class SSHController {
     const privateKey = SSHController.sanitizeKey(serverConfig.privateKey);
 
     if (SSHController.isLocal(serverConfig.host)) {
-       if (this.socket) this.socket.emit('terminal:data', '\\r\\n\\x1b[32m[SYSTEM] Securing local stream...\\x1b[0m\\r\\n');
+       if (this.socket) this.socket.emit('terminal:data', '\r\n\x1b[32m[SYSTEM] Securing local stream...\x1b[0m\r\n');
        const wrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
        
        this.localProcess = spawn(wrapperPath, [], {
@@ -170,22 +170,22 @@ class SSHController {
        });
 
        this.localProcess.stdout.on('data', (data) => {
-           let formatted = data.toString().replace(/\\r\\n/g, '\\n').replace(/\\n/g, '\\r\\n');
+           let formatted = data.toString().replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
            if (this.socket) this.socket.emit('terminal:data', formatted);
        });
 
        this.localProcess.stderr.on('data', (data) => {
-           let formatted = data.toString().replace(/\\r\\n/g, '\\n').replace(/\\n/g, '\\r\\n');
-           if (this.socket) this.socket.emit('terminal:data', `\\x1b[31m${formatted}\\x1b[0m`);
+           let formatted = data.toString().replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+           if (this.socket) this.socket.emit('terminal:data', `\x1b[31m${formatted}\x1b[0m`);
        });
 
        this.localProcess.on('close', () => {
-           if (this.socket) this.socket.emit('terminal:data', '\\r\\n\\x1b[33m[SYSTEM] Stream Closed.\\x1b[0m\\r\\n');
+           if (this.socket) this.socket.emit('terminal:data', '\r\n\x1b[33m[SYSTEM] Stream Closed.\x1b[0m\r\n');
            this.disconnect();
        });
        
        this.localProcess.on('error', (err) => {
-          if (this.socket) this.socket.emit('terminal:data', `\\r\\n\\x1b[31m[SYSTEM ERROR] Local execution failed: ${err.message}\\x1b[0m\\r\\n`);
+          if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] Local execution failed: ${err.message}\x1b[0m\r\n`);
        });
        return;
     }
@@ -193,35 +193,35 @@ class SSHController {
     this.conn = new Client();
     
     this.conn.on('ready', () => {
-       if (this.socket) this.socket.emit('terminal:data', '\\r\\n\\x1b[32m[SYSTEM] Securely connected via SSH...\\x1b[0m\\r\\n');
+       if (this.socket) this.socket.emit('terminal:data', '\r\n\x1b[32m[SYSTEM] Securely connected via SSH...\x1b[0m\r\n');
        
-       this.conn.exec(commandStr, (err, stream) => {
+       this.conn.exec(`./log-wrapper.sh ${commandStr}`, { pty: true }, (err, stream) => {
           if (err) {
-            if (this.socket) this.socket.emit('terminal:data', `\\r\\n\\x1b[31m[SYSTEM ERROR] Exec failed: ${err.message}\\x1b[0m\\r\\n`);
+            if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] Exec failed: ${err.message}\x1b[0m\r\n`);
             this.disconnect();
             return;
           }
           this.stream = stream;
 
           stream.on('data', (data) => {
-             let formatted = data.toString().replace(/\\r\\n/g, '\\n').replace(/\\n/g, '\\r\\n');
+             let formatted = data.toString().replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
              if (this.socket) this.socket.emit('terminal:data', formatted);
           });
 
           stream.stderr.on('data', (data) => {
-             let formatted = data.toString().replace(/\\r\\n/g, '\\n').replace(/\\n/g, '\\r\\n');
-             if (this.socket) this.socket.emit('terminal:data', `\\x1b[31m${formatted}\\x1b[0m`);
+             let formatted = data.toString().replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+             if (this.socket) this.socket.emit('terminal:data', `\x1b[31m${formatted}\x1b[0m`);
           });
 
           stream.on('close', () => {
-             if (this.socket) this.socket.emit('terminal:data', '\\r\\n\\x1b[33m[SYSTEM] Stream Closed.\\x1b[0m\\r\\n');
+             if (this.socket) this.socket.emit('terminal:data', '\r\n\x1b[33m[SYSTEM] Stream Closed.\x1b[0m\r\n');
              this.disconnect();
           });
        });
     });
 
     this.conn.on('error', (err) => {
-      if (this.socket) this.socket.emit('terminal:data', `\\r\\n\\x1b[31m[SYSTEM ERROR] SSH connection error: ${err.message}\\x1b[0m\\r\\n`);
+      if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] SSH connection error: ${err.message}\x1b[0m\r\n`);
     });
 
     try {
@@ -229,10 +229,12 @@ class SSHController {
         host: serverConfig.host,
         port: serverConfig.port,
         username: serverConfig.username,
-        privateKey: privateKey
+        privateKey: privateKey,
+        keepaliveInterval: 10000, // 10 seconds
+        readyTimeout: 20000
       });
     } catch (e) {
-      if (this.socket) this.socket.emit('terminal:data', `\\r\\n\\x1b[31m[SYSTEM ERROR] Invalid target server config.\\x1b[0m\\r\\n`);
+      if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] Invalid target server config.\x1b[0m\r\n`);
     }
   }
 

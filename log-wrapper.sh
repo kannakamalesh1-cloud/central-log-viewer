@@ -15,8 +15,18 @@ if [ -z "$SSH_ORIGINAL_COMMAND" ]; then
   exit 1
 fi
 
-# Parse the original command
-read -r CMD ARG1 ARG2 ARG3 <<< "$SSH_ORIGINAL_COMMAND"
+# Parse the original command into an array for robust shifting
+read -r -a WORDS <<< "$SSH_ORIGINAL_COMMAND"
+
+# If the command starts with the script name, shift the arguments
+if [[ "${WORDS[0]}" == *"log-wrapper.sh" ]]; then
+  WORDS=("${WORDS[@]:1}")
+fi
+
+CMD="${WORDS[0]}"
+ARG1="${WORDS[1]}"
+ARG2="${WORDS[2]}"
+ARG3="${WORDS[3]}"
 
 # ------------------------------------------------------------------------------
 # Security Allowlist Routes
@@ -52,7 +62,12 @@ case "$CMD" in
       if [ -d "/var/log/nginx" ]; then
          for log in /var/log/nginx/*.log; do
            [ -e "$log" ] || continue
-           echo "nginx:$(basename "$log")|file"
+           STATUS="file"
+           # Mark as active only if modified in last 60 mins
+           if [ -s "$log" ] && [ -n "$(find "$log" -mmin -60 2>/dev/null)" ]; then
+              STATUS="active"
+           fi
+           echo "nginx:$(basename "$log")|$STATUS"
          done
       fi
     fi
@@ -62,7 +77,11 @@ case "$CMD" in
       if [ -d "/var/log/apache2" ]; then
          for log in /var/log/apache2/*.log; do
            [ -e "$log" ] || continue
-           echo "apache:$(basename "$log")|file"
+           STATUS="file"
+           if [ -s "$log" ] && [ -n "$(find "$log" -mmin -60 2>/dev/null)" ]; then
+              STATUS="active"
+           fi
+           echo "apache:$(basename "$log")|$STATUS"
          done
       fi
     fi
