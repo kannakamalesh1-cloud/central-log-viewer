@@ -551,16 +551,18 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                           const namespaces = Array.from(new Set(sources.map(s => s.identifier.split('/')[0]))).sort();
                           return (
                             <div key={type} className="flex flex-col gap-1 mb-1">
-                              <button
+                              <div
                                 onClick={() => toggleSection(type)}
-                                className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all"
+                                className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all cursor-pointer"
                               >
                                 <div className="flex items-center gap-2">
                                   <div className={`w-1.5 h-3.5 bg-cyan-500 rounded-full transition-transform group-hover:scale-y-125`} />
                                   <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest leading-none">{config.label}</span>
                                 </div>
-                                <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                              </button>
+                                <div className="flex items-center gap-3">
+                                  <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                </div>
+                              </div>
 
                               {isExpanded && (
                                 <div className="flex flex-col gap-1.5 pl-1.5 animate-in slide-in-from-top-1 duration-200">
@@ -594,9 +596,9 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
                         return (
                           <div key={type} className="flex flex-col gap-1 mb-1">
-                            <button
+                            <div
                               onClick={() => toggleSection(type)}
-                              className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all"
+                              className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all cursor-pointer"
                             >
                               <div className="flex items-center justify-between w-full">
                                 <div className="flex items-center gap-2">
@@ -615,7 +617,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                                   <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                                 </div>
                               </div>
-                            </button>
+                            </div>
 
                             {isExpanded && (
                               <div className="flex flex-col gap-1.5 pl-1.5 animate-in slide-in-from-top-1 duration-200">
@@ -658,7 +660,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                                             {(() => {
                                               const status = source.status?.toLowerCase() || '';
                                               // More flexible check for active states (including files)
-                                              const isLive = /running|up|active|security|healthy|file/i.test(status);
+                                              const isLive = /running|up|active|security|healthy/i.test(status);
                                               if (!isLive) return null;
 
                                               return (

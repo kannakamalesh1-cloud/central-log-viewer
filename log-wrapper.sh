@@ -63,8 +63,8 @@ case "$CMD" in
          for log in /var/log/nginx/*.log; do
            [ -e "$log" ] || continue
            STATUS="file"
-           # Mark as active only if modified in last 60 mins
-           if [ -s "$log" ] && [ -n "$(find "$log" -mmin -60 2>/dev/null)" ]; then
+           # Mark as active only if modified in last 15 mins
+           if [ -s "$log" ] && [ -n "$(find "$log" -mmin -15 2>/dev/null)" ]; then
               STATUS="active"
            fi
            echo "nginx:$(basename "$log")|$STATUS"
@@ -78,7 +78,7 @@ case "$CMD" in
          for log in /var/log/apache2/*.log; do
            [ -e "$log" ] || continue
            STATUS="file"
-           if [ -s "$log" ] && [ -n "$(find "$log" -mmin -60 2>/dev/null)" ]; then
+           if [ -s "$log" ] && [ -n "$(find "$log" -mmin -15 2>/dev/null)" ]; then
               STATUS="active"
            fi
            echo "apache:$(basename "$log")|$STATUS"
@@ -89,14 +89,22 @@ case "$CMD" in
     if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "system" ]]; then
        # Direct check for most common files
        for f in /var/log/syslog /var/log/messages /var/log/kern.log /var/log/dmesg; do
-         [ -f "$f" ] && echo "system:$(basename "$f")|active"
+         if [ -f "$f" ]; then
+            STATUS="active"
+            if [ -z "$(find "$f" -mmin -15 2>/dev/null)" ]; then STATUS="idle"; fi
+            echo "system:$(basename "$f")|$STATUS"
+         fi
        done
     fi
 
     # 6. Auth Logs
     if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "auth" ]]; then
        for f in /var/log/auth.log /var/log/secure; do
-         [ -f "$f" ] && echo "auth:$(basename "$f")|security"
+         if [ -f "$f" ]; then
+            STATUS="security"
+            if [ -z "$(find "$f" -mmin -15 2>/dev/null)" ]; then STATUS="idle"; fi
+            echo "auth:$(basename "$f")|$STATUS"
+         fi
        done
     fi
 
@@ -104,7 +112,9 @@ case "$CMD" in
     if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "database" ]]; then
        # Look for common DB logs recursively up to 2 levels
        find /var/log -maxdepth 3 \( -name "*mysql*" -o -name "*postgres*" -o -name "*redis*" -o -name "*mongodb*" \) -type f 2>/dev/null | while read -r log; do
-         echo "database:$(basename "$log")|$log"
+         STATUS="active"
+         if [ -z "$(find "$log" -mmin -15 2>/dev/null)" ]; then STATUS="idle"; fi
+         echo "database:$log|$STATUS"
        done
     fi
 
