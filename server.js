@@ -168,6 +168,7 @@ app.prepare().then(async () => {
         socket.emit('terminal:data', `\x1b[31m[SECURITY ERROR] Invalid characters in ${failedParam}.\x1b[0m\r\n`);
         return;
       }
+
       if (searchTerm && /[\;\&\|\`\$\(\)]/.test(searchTerm)) {
         socket.emit('terminal:data', '\x1b[31m[SECURITY ERROR] Shell metacharacters forbidden in search.\x1b[0m\r\n');
         return;
@@ -226,14 +227,16 @@ app.prepare().then(async () => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Invalid credentials' });
     
-    const normalizedEmail = email.toLowerCase();
-    const user = await get('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
+    console.log(`[LOGIN ATTEMPT] User: "${email}"`);
+    const user = await get('SELECT * FROM users WHERE email = ? COLLATE BINARY', [email]);
 
     if (user && bcrypt.compareSync(password, user.passwordHash)) {
+      console.log(`[LOGIN SUCCESS] User: "${email}" (Stored: "${user.email}")`);
       const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '12h' });
       res.cookie('token', token, { httpOnly: true, secure: !dev, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
       res.json({ success: true, email: user.email, role: user.role });
     } else {
+      console.log(`[LOGIN FAILED] User: "${email}" - ${user ? 'Incorrect Password' : 'User Not Found'}`);
       res.status(401).json({ error: 'Invalid credentials' });
     }
   });
@@ -270,9 +273,8 @@ app.prepare().then(async () => {
     if (!email || !password) return res.status(400).json({ error: 'User and password required' });
     
     try {
-      const normalizedEmail = email.toLowerCase();
       const hash = bcrypt.hashSync(password, 12);
-      await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [normalizedEmail, hash, role || 'viewer']);
+      await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, role || 'viewer']);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'User already exists or database error' });
