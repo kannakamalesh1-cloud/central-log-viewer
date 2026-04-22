@@ -128,6 +128,12 @@ case "$CMD" in
     LOG_TYPE="$ARG1"
     LOG_SOURCE="$ARG2"
 
+    # Defense-in-depth: Block path traversal even if bypassed at the app layer
+    if [[ "$LOG_SOURCE" == *".."* ]]; then
+      echo "[SECURITY ERROR] Path traversal detected."
+      exit 1
+    fi
+
     case "$LOG_TYPE" in
       "system"|"auth")
         FILE_PATH="/var/log/$LOG_SOURCE"
@@ -154,7 +160,7 @@ case "$CMD" in
         # Strip status suffix if present (anything after :)
         CLEAN_DOCKER="${LOG_SOURCE%%:*}"
         if [ -n "$ARG3" ]; then
-          docker logs --tail 200 -f "$CLEAN_DOCKER" 2>&1 | grep --line-buffered -i -e "$ARG3"
+          docker logs --tail 200 -f "$CLEAN_DOCKER" 2>&1 | grep --line-buffered -i -e "$ARG3" --
         else
           docker logs --tail 200 -f "$CLEAN_DOCKER" 2>&1
         fi
@@ -172,7 +178,7 @@ case "$CMD" in
           NS_FLAG=""
         fi
         if [ -n "$ARG3" ]; then
-          kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD" 2>&1 | grep --line-buffered -i -e "$ARG3"
+          kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD" 2>&1 | grep --line-buffered -i -e "$ARG3" --
         else
           kubectl logs $NS_FLAG --tail 200 -f "$K8S_POD" 2>&1
         fi
@@ -192,7 +198,7 @@ case "$CMD" in
          exit 1
       fi
       if [ -n "$ARG3" ]; then
-        tail -n 200 -f "$FILE_PATH" 2>&1 | grep --line-buffered -i -e "$ARG3"
+        tail -n 200 -f "$FILE_PATH" 2>&1 | grep --line-buffered -i -e "$ARG3" --
       else
         tail -n 200 -f "$FILE_PATH" 2>&1
       fi

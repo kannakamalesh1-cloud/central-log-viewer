@@ -14,6 +14,7 @@ const rateLimit = require('express-rate-limit');
 const cookie = require('cookie');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 
 const dev = process.env.NODE_ENV !== 'production';
@@ -27,7 +28,7 @@ const handle = app.getRequestHandler();
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
 // Load encryption key from a secure location if possible
-const SECURE_KEY_PATH = process.env.SECURE_KEY_PATH || path.join(process.env.HOME || '/home/kamalesh', '.pulselog_key');
+const SECURE_KEY_PATH = process.env.SECURE_KEY_PATH || path.join(os.homedir(), '.pulselog_key');
 let ENCRYPTION_KEY;
 
 if (fs.existsSync(SECURE_KEY_PATH)) {
@@ -107,8 +108,19 @@ app.prepare().then(async () => {
 
   const server = express();
 
-  // Basic security headers, Content Security Policy is disabled for dev/Next.js default compatibility
-  server.use(helmet({ contentSecurityPolicy: false }));
+  // Enhanced security headers
+  server.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Required for Next.js dev/hydration
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'", "ws:", "wss:"], // Required for Socket.io
+      },
+    },
+  }));
   server.use(express.json());
   server.use(cookieParser());
 
@@ -161,7 +173,8 @@ app.prepare().then(async () => {
         }
       }
 
-      const safeRegex = /^[a-zA-Z0-9_\.\/|: -]+$/;
+      // Strict Input Sanitization - Allow metadata separators but forbid path traversal (..)
+      const safeRegex = /^(?!.*\.\.)[a-zA-Z0-9_\.\/|: -]+$/;
 
       if (!safeRegex.test(logType) || !safeRegex.test(cleanSourceId)) {
         const failedParam = !safeRegex.test(logType) ? `logType (${logType})` : `sourceId (${cleanSourceId})`;
@@ -169,8 +182,8 @@ app.prepare().then(async () => {
         return;
       }
 
-      if (searchTerm && /[\;\&\|\`\$\(\)]/.test(searchTerm)) {
-        socket.emit('terminal:data', '\x1b[31m[SECURITY ERROR] Shell metacharacters forbidden in search.\x1b[0m\r\n');
+      if (searchTerm && (/[\;\&\|\`\$\(\)]/.test(searchTerm) || searchTerm.startsWith('-'))) {
+        socket.emit('terminal:data', '\x1b[31m[SECURITY ERROR] Forbidden characters or flag prefix in search.\x1b[0m\r\n');
         return;
       }
 
