@@ -44,6 +44,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [serverSearchTerm, setServerSearchTerm] = useState('');
   const [selectedNamespace, setSelectedNamespace] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     system: false,
@@ -410,26 +411,60 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
               </button>
 
               {isServerDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-[100] max-h-[300px] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200 custom-scrollbar">
-                  {servers.length === 0 ? (
-                    <div className="px-4 py-3 text-[11px] text-slate-500 italic">No servers configured</div>
-                  ) : (
-                    servers.map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); }}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-slate-50 ${selectedServerId === s.id ? 'text-sky-600 bg-sky-500/5' : 'text-slate-600'}`}
-                      >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/10 border-sky-500/20' : 'bg-slate-100 border-slate-200'}`}>
-                          <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-sky-600' : 'text-slate-400'}`} />
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold truncate leading-none text-slate-800">{s.name}</span>
-                          <span className="text-[10px] text-slate-400 font-mono mt-1 opacity-70 truncate">{s.host}</span>
-                        </div>
-                      </button>
-                    ))
-                  )}
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-[100] max-h-[400px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="px-3 pb-2 pt-1 border-b border-slate-100 mb-1">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search servers..."
+                        autoFocus
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-lg pl-8 pr-3 py-2 outline-none focus:border-sky-500 transition-all"
+                        value={serverSearchTerm}
+                        onChange={(e) => setServerSearchTerm(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto custom-scrollbar flex-1">
+                    {servers.filter(s => 
+                      s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) || 
+                      s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
+                    ).length === 0 ? (
+                      <div className="px-4 py-8 text-center">
+                        <p className="text-[11px] text-slate-500 italic">No servers found</p>
+                        {serverSearchTerm && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setServerSearchTerm(''); }}
+                            className="mt-2 text-[10px] font-bold text-sky-600 hover:text-sky-500 uppercase tracking-tight"
+                          >
+                            Clear Search
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      servers
+                        .filter(s => 
+                          s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) || 
+                          s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
+                        )
+                        .map(s => (
+                          <button
+                            key={s.id}
+                            onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); setServerSearchTerm(''); }}
+                            className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-slate-50 ${selectedServerId === s.id ? 'text-sky-600 bg-sky-500/5' : 'text-slate-600'}`}
+                          >
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/10 border-sky-500/20' : 'bg-slate-100 border-slate-200'}`}>
+                              <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-sky-600' : 'text-slate-400'}`} />
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-semibold truncate leading-none text-slate-800">{s.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono mt-1 opacity-70 truncate">{s.host}</span>
+                            </div>
+                          </button>
+                        ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>
