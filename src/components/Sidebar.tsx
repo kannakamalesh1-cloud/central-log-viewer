@@ -452,14 +452,14 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                           <button
                             key={s.id}
                             onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); setServerSearchTerm(''); }}
-                            className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-slate-50 ${selectedServerId === s.id ? 'text-sky-600 bg-sky-500/5' : 'text-slate-600'}`}
+                            className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 bg-sky-50/40 hover:bg-sky-100/60 border-b border-sky-500/5 last:border-b-0 ${selectedServerId === s.id ? 'text-sky-700 bg-sky-100/80 ring-1 ring-inset ring-sky-500/20' : 'text-slate-600'}`}
                           >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/10 border-sky-500/20' : 'bg-slate-100 border-slate-200'}`}>
-                              <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-sky-600' : 'text-slate-400'}`} />
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/20 border-sky-500/30' : 'bg-white border-sky-200'}`}>
+                              <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-sky-600' : 'text-sky-400'}`} />
                             </div>
                             <div className="flex flex-col min-w-0">
                               <span className="font-semibold truncate leading-none text-slate-800">{s.name}</span>
-                              <span className="text-[10px] text-slate-400 font-mono mt-1 opacity-70 truncate">{s.host}</span>
+                              <span className="text-[10px] text-sky-600/60 font-mono mt-1 opacity-70 truncate">{s.host}</span>
                             </div>
                           </button>
                         ))
@@ -935,14 +935,14 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
         <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
           <form onSubmit={handleAddUser} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Email Address</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Username / Email Address</label>
               <input
-                type="email"
+                type="text"
                 required
                 value={userForm.email}
                 onChange={e => setUserForm({ ...userForm, email: e.target.value })}
                 className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
-                placeholder="user@example.com"
+                placeholder="dev or user@email.com"
               />
             </div>
             <div className="flex flex-col gap-1.5">
