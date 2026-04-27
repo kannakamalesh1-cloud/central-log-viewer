@@ -190,49 +190,49 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
     <div className="w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl transition-all hover:bg-white/10 group">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm transition-all hover:shadow-md group">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-purple-500/20 rounded-2xl border border-purple-500/30 group-hover:scale-110 transition-transform">
-              <Server className="w-6 h-6 text-purple-400" />
+            <div className="p-3 bg-sky-500/10 rounded-2xl border border-sky-500/20 group-hover:scale-110 transition-transform">
+              <Server className="w-6 h-6 text-sky-600" />
             </div>
             <div>
-              <p className="text-zinc-500 text-sm font-medium">Total Infrastructure</p>
-              <h3 className="text-2xl font-bold text-white tracking-tight">{stats.totalServers} Nodes</h3>
+              <p className="text-slate-500 text-sm font-medium">Total Infrastructure</p>
+              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{stats.totalServers} Nodes</h3>
             </div>
           </div>
         </div>
 
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl transition-all hover:bg-white/10 group">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm transition-all hover:shadow-md group">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-blue-500/20 rounded-2xl border border-blue-500/30 group-hover:scale-110 transition-transform">
-              <Users className="w-6 h-6 text-blue-400" />
+            <div className="p-3 bg-sky-500/10 rounded-2xl border border-sky-500/20 group-hover:scale-110 transition-transform">
+              <Users className="w-6 h-6 text-sky-600" />
             </div>
             <div>
-              <p className="text-zinc-500 text-sm font-medium">Authorized Users</p>
-              <h3 className="text-2xl font-bold text-white tracking-tight">{stats.activeUsers} Operators</h3>
+              <p className="text-slate-500 text-sm font-medium">Authorized Users</p>
+              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">{stats.activeUsers} Operators</h3>
             </div>
           </div>
         </div>
 
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl transition-all hover:bg-white/10 group">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm transition-all hover:shadow-md group">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-green-500/20 rounded-2xl border border-green-500/30 group-hover:scale-110 transition-transform">
-              <Shield className="w-6 h-6 text-green-400" />
+            <div className="p-3 bg-green-500/10 rounded-2xl border border-green-500/20 group-hover:scale-110 transition-transform">
+              <Shield className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <p className="text-zinc-500 text-sm font-medium">System Integrity</p>
-              <h3 className="text-2xl font-bold text-white tracking-tight">Active & Secure</h3>
+              <p className="text-slate-500 text-sm font-medium">System Integrity</p>
+              <h3 className="text-2xl font-bold text-slate-900 tracking-tight">Active & Secure</h3>
             </div>
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-zinc-500">Connected Servers</h2>
+        <h2 className="text-lg font-bold text-slate-800 tracking-tight">Connected Servers</h2>
         <button
           onClick={fetchData}
           disabled={loading}
-          className="p-2 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white transition-all disabled:opacity-50"
+          className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-900 transition-all disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -255,26 +255,26 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
             <div
               key={server.id}
               onClick={() => onSelectServer(server.id)}
-              className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl transition-all hover:bg-white/[0.08] hover:border-white/20 hover:translate-y-[-4px] cursor-pointer group"
+              className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm transition-all hover:shadow-md hover:translate-y-[-4px] cursor-pointer group"
             >
               <div className="flex justify-between items-start mb-4">
-                <div className="p-2.5 bg-zinc-800 rounded-2xl border border-white/5 group-hover:bg-purple-500/10 group-hover:border-purple-500/30 transition-all">
-                  <Server className="w-5 h-5 text-zinc-400 group-hover:text-purple-400" />
+                <div className="p-2.5 bg-slate-100 rounded-2xl border border-slate-200 group-hover:bg-sky-500/10 group-hover:border-sky-500/30 transition-all">
+                  <Server className="w-5 h-5 text-slate-400 group-hover:text-sky-600" />
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[10px] font-bold text-green-400 uppercase tracking-widest">Connected</span>
+                  <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Connected</span>
                 </div>
               </div>
 
-              <h4 className="text-base font-bold text-white mb-1 group-hover:text-purple-400 transition-colors uppercase tracking-tight">{server.name}</h4>
-              <p className="text-xs text-zinc-500 font-mono mb-4">{server.host}:{server.port}</p>
+              <h4 className="text-base font-bold text-slate-800 mb-1 group-hover:text-sky-600 transition-colors uppercase tracking-tight">{server.name}</h4>
+              <p className="text-xs text-slate-500 font-mono mb-4">{server.host}:{server.port}</p>
 
-              <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                <span className="text-[10px] text-zinc-600 font-medium">
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                <span className="text-[10px] text-slate-400 font-medium">
                   {server.username} • Added {new Date(server.createdAt).toLocaleDateString()}
                 </span>
-                <ChevronRight className="w-4 h-4 text-zinc-500 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                <ChevronRight className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </div>
             </div>
           ))}
@@ -285,63 +285,63 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
       {userRole === 'admin' && (
         <div className="mt-8 mb-8 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-zinc-800/50 rounded-lg border border-white/5">
-                <List className="w-5 h-5 text-zinc-400" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-sky-500/15 rounded-xl border border-sky-400/25">
+                <List className="w-5 h-5 text-sky-600" />
               </div>
               <div>
-                 <h2 className="text-lg font-bold text-white tracking-tight">Security Audit Trail</h2>
-                 <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">Immutable Access Logs</p>
+                 <h2 className="text-lg font-bold text-slate-800 tracking-tight">Security Audit Trail</h2>
+                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Immutable Access Logs</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-purple-400 transition-colors" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-sky-500 transition-colors" />
                 <input 
                   type="text" 
                   placeholder="Filter logs..." 
                   value={auditSearchTerm}
                   onChange={(e) => setAuditSearchTerm(e.target.value)}
-                  className="w-64 bg-black/40 backdrop-blur-xl border border-white/10 text-white text-sm rounded-xl pl-9 pr-4 py-2 outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all placeholder:text-zinc-600 shadow-inner"
+                  className="w-64 bg-white border border-slate-200 text-slate-800 text-sm rounded-xl pl-9 pr-4 py-2 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/10 transition-all placeholder:text-slate-400 shadow-sm"
                 />
               </div>
               <button 
                 onClick={exportAuditLogs}
                 disabled={auditLogs.length === 0}
-                className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                className="flex items-center gap-2 bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 text-slate-600 hover:text-sky-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed group shadow-sm"
               >
                 <Download className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 Export CSV
               </button>
             </div>
           </div>
-          <div className="bg-black/40 backdrop-blur-2xl border border-white/10 rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto custom-scrollbar max-h-[500px]">
-              <table className="w-full text-left text-sm text-zinc-300 border-collapse">
-                <thead className="text-[10px] font-black uppercase tracking-[0.2em] bg-[#0a0a0a] text-zinc-500 sticky top-0 z-10 shadow-sm border-b border-white/5">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="text-[10px] font-black uppercase tracking-[0.18em] bg-slate-50 text-slate-400 sticky top-0 z-10 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('timestamp')}>
+                    <th className="px-6 py-4 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => handleSort('timestamp')}>
                       <div className="flex items-center gap-1">Timestamp {sortConfig.key === 'timestamp' && (sortConfig.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}</div>
                     </th>
-                    <th className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('userEmail')}>
+                    <th className="px-6 py-4 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => handleSort('userEmail')}>
                       <div className="flex items-center gap-1">Operator {sortConfig.key === 'userEmail' && (sortConfig.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}</div>
                     </th>
-                    <th className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('serverName')}>
+                    <th className="px-6 py-4 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => handleSort('serverName')}>
                       <div className="flex items-center gap-1">Server Node {sortConfig.key === 'serverName' && (sortConfig.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}</div>
                     </th>
-                    <th className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('logType')}>
+                    <th className="px-6 py-4 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => handleSort('logType')}>
                       <div className="flex items-center gap-1">Context {sortConfig.key === 'logType' && (sortConfig.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}</div>
                     </th>
-                    <th className="px-6 py-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('sourceId')}>
+                    <th className="px-6 py-4 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => handleSort('sourceId')}>
                       <div className="flex items-center gap-1">Target Source {sortConfig.key === 'sourceId' && (sortConfig.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}</div>
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.02]">
+                <tbody className="divide-y divide-slate-100">
                   {filteredAuditLogs.length === 0 ? (
                      <tr>
                         <td colSpan={5} className="px-6 py-12">
-                           <div className="flex flex-col items-center justify-center text-zinc-600">
+                           <div className="flex flex-col items-center justify-center text-slate-400">
                               <Search className="w-8 h-8 mb-3 opacity-20" />
                               <span className="font-semibold text-sm">No audit records found</span>
                               {auditSearchTerm && <span className="text-xs mt-1">Try adjusting your filters</span>}
@@ -354,39 +354,39 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
                       const date = new Date(fixedTime);
                       const isRoot = log.userEmail === 'root';
                       return (
-                        <tr key={log.id} className="hover:bg-white/[0.03] transition-colors group">
+                        <tr key={log.id} className="hover:bg-sky-50/60 transition-colors group">
                           <td className="px-6 py-3.5 whitespace-nowrap">
                             <div className="flex flex-col">
-                              <span className="text-zinc-300 text-[13px] font-medium">{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                              <span className="text-zinc-500 font-mono text-[10px]">{date.toLocaleTimeString()}</span>
+                              <span className="text-slate-700 text-[13px] font-semibold">{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              <span className="text-slate-400 font-mono text-[10px]">{date.toLocaleTimeString()}</span>
                             </div>
                           </td>
                           <td className="px-6 py-3.5">
                             <div className="flex items-center gap-2">
-                               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner ${isRoot ? 'bg-red-500/80' : 'bg-purple-500/80'}`}>
+                               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner ${isRoot ? 'bg-red-500' : 'bg-sky-500'}`}>
                                   {log.userEmail.substring(0, 2).toUpperCase()}
                                </div>
-                               <span className={`font-semibold ${isRoot ? 'text-red-400' : 'text-purple-300'}`}>{log.userEmail}</span>
+                               <span className={`font-semibold ${isRoot ? 'text-red-500' : 'text-sky-700'}`}>{log.userEmail}</span>
                             </div>
                           </td>
                           <td className="px-6 py-3.5">
                              <div className="flex items-center gap-2">
-                                <Server className="w-3.5 h-3.5 text-zinc-500" />
-                                <span className="font-medium text-zinc-200">{log.serverName}</span>
+                                <Server className="w-3.5 h-3.5 text-slate-400" />
+                                <span className="font-medium text-slate-700">{log.serverName}</span>
                              </div>
                           </td>
                           <td className="px-6 py-3.5">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-800/80 border border-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                                {log.logType === 'docker' && <Box className="w-3 h-3 text-blue-400" />}
-                               {log.logType === 'k8s' && <Cloud className="w-3 h-3 text-cyan-400" />}
+                               {log.logType === 'k8s' && <Cloud className="w-3 h-3 text-sky-500" />}
                                {log.logType === 'database' && <Database className="w-3 h-3 text-yellow-400" />}
-                               {log.logType === 'system' && <Settings className="w-3 h-3 text-zinc-300" />}
+                               {log.logType === 'system' && <Settings className="w-3 h-3 text-slate-500" />}
                                {log.logType === 'auth' && <Shield className="w-3 h-3 text-red-400" />}
-                               {!['docker','k8s','database','system','auth'].includes(log.logType) && <Activity className="w-3 h-3 text-zinc-500" />}
+                               {!['docker','k8s','database','system','auth'].includes(log.logType) && <Activity className="w-3 h-3 text-slate-400" />}
                                {log.logType}
                             </span>
                           </td>
-                          <td className="px-6 py-3.5 font-mono text-xs text-zinc-300 max-w-[250px] truncate group-hover:text-white transition-colors" title={log.sourceId}>
+                          <td className="px-6 py-3.5 font-mono text-xs text-slate-500 max-w-[250px] truncate group-hover:text-sky-700 transition-colors" title={log.sourceId}>
                              {log.sourceId}
                           </td>
                         </tr>

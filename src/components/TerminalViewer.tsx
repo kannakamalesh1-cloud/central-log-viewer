@@ -60,8 +60,31 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   useEffect(() => {
     if (!terminalRef.current) return;
     const term = new Terminal({
-      theme: { background: '#0d0d0d', foreground: '#e2e8f0', cursor: '#8b5cf6' },
-      fontFamily: 'monospace',
+      theme: {
+        background:   '#ffffff',
+        foreground:   '#1e293b',
+        cursor:       '#0ea5e9',
+        cursorAccent: '#ffffff',
+        selectionBackground: 'rgba(14,165,233,0.2)',
+        // Override ANSI green -> sky blue (used for INFO/OK/SUCCESS)
+        green:        '#0284c7',
+        brightGreen:  '#0ea5e9',
+        // Keep red for errors
+        red:          '#dc2626',
+        brightRed:    '#ef4444',
+        // Amber for warnings
+        yellow:       '#b45309',
+        brightYellow: '#d97706',
+        // Cyan for info messages
+        cyan:         '#0369a1',
+        brightCyan:   '#0284c7',
+        // Default black/white
+        black:        '#1e293b',
+        white:        '#334155',
+        brightBlack:  '#64748b',
+        brightWhite:  '#0f172a',
+      },
+      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize,
       convertEol: true,
       cursorInactiveStyle: 'outline',
@@ -70,11 +93,26 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
-    setTimeout(() => fitAddonRef.current?.fit(), 50);
+
+    // Delay fit so flexbox has time to compute dimensions
+    const t1 = setTimeout(() => fitAddonRef.current?.fit(), 100);
+    const t2 = setTimeout(() => fitAddonRef.current?.fit(), 400);
+
     termInstance.current = term;
+
     const onResize = () => fitAddonRef.current?.fit();
     window.addEventListener('resize', onResize);
-    return () => { window.removeEventListener('resize', onResize); term.dispose(); };
+
+    // ResizeObserver: refit whenever the container changes size
+    const ro = new ResizeObserver(() => fitAddonRef.current?.fit());
+    if (terminalRef.current) ro.observe(terminalRef.current);
+
+    return () => {
+      clearTimeout(t1); clearTimeout(t2);
+      window.removeEventListener('resize', onResize);
+      ro.disconnect();
+      term.dispose();
+    };
   }, []);
 
   // Font size
@@ -88,9 +126,18 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   useEffect(() => {
     if (!termInstance.current) return;
     termInstance.current.options.theme = {
-      background: isDimmed ? '#020202' : '#0d0d0d',
-      foreground: isDimmed ? '#94a3b8' : '#e2e8f0',
-      cursor: '#8b5cf6',
+      background:   isDimmed ? '#f1f5f9' : '#ffffff',
+      foreground:   isDimmed ? '#64748b' : '#1e293b',
+      cursor:       '#0ea5e9',
+      selectionBackground: 'rgba(14,165,233,0.15)',
+      green:        isDimmed ? '#38bdf8' : '#0284c7',
+      brightGreen:  '#0ea5e9',
+      red:          '#dc2626',
+      brightRed:    '#ef4444',
+      yellow:       '#b45309',
+      brightYellow: '#d97706',
+      cyan:         '#0369a1',
+      brightCyan:   '#0284c7',
     };
   }, [isDimmed]);
 
@@ -106,7 +153,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      term.writeln('\x1b[35m[INFO]\x1b[0m CONNECTED_TO_STREAMING_NODE...');
+      term.writeln('\x1b[36m[INFO]\x1b[0m CONNECTED_TO_STREAMING_NODE...');
       if (serverId && logType && sourceId)
         socket.emit('request_stream', { serverId, logType, sourceId, searchTerm: activeSearch, isRegex });
     });
@@ -146,7 +193,6 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         return p;
       };
 
-      // Ensure all literal escapes are converted to actual control chars
       const cleanData = safeData
         .replace(/\\x1b/g, '\x1b')
         .replace(/\\r/g, '\r')
@@ -185,48 +231,51 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   return (
     <div
       onClick={onSlotClick}
-      className={`w-full h-full p-4 bg-[#080808] border-2 rounded-[32px] shadow-[0_24px_80px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col transition-all duration-300 cursor-default overscroll-none select-none ${
-        isActiveSlot ? 'border-purple-500/50 ring-8 ring-purple-500/5' : 'border-white/10 opacity-90'
+      className={`w-full h-full flex flex-col bg-white rounded-3xl overflow-hidden transition-all duration-300 cursor-default overscroll-none select-none ${
+        isActiveSlot
+          ? 'border-2 border-sky-400 shadow-[0_8px_40px_rgba(56,189,248,0.18)]'
+          : 'border border-slate-200 shadow-lg'
       }`}
+      style={{ minHeight: 0 }}
     >
-      {/* Error Spike Banner */}
-      {errorSpike && (
-        <div className="mb-2 px-4 py-2 bg-red-500/10 border border-red-500/25 rounded-2xl flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-ping flex-shrink-0" />
-            <span className="text-red-400 text-[10px] font-black uppercase tracking-widest">
-              ⚠ Error Spike — {errorSpikeCount} errors in last 10s
-            </span>
-          </div>
-          <button onClick={() => setErrorSpike(false)} className="text-zinc-700 hover:text-red-400 transition-colors ml-4">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+      {/* ── Toolbar ─────────────────────────────────────── */}
+      <div className="flex items-center w-full px-4 py-2.5 gap-3 bg-white border-b border-slate-100 flex-shrink-0 flex-wrap">
 
-      {/* ── Single Header Row ─────────────────────────────────────── */}
-      <div className="flex items-center w-full px-1 mb-3 gap-3">
-        {/* Dots + Name */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Traffic dots + source name */}
+        <div className="flex items-center gap-2.5 flex-shrink-0">
           <div className="flex gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/80" />
           </div>
-          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em] max-w-[180px] truncate">
+          <span className="text-[11px] font-black text-slate-600 uppercase tracking-[0.18em] max-w-[180px] truncate">
             {sourceId?.split('/').pop()?.toUpperCase() || 'NO_SOURCE'}
           </span>
           {alertCount > 0 && (
-            <span className="text-red-500 text-[9px] font-bold animate-pulse flex-shrink-0">[{alertCount}]</span>
+            <span className="text-red-500 text-[9px] font-bold animate-pulse flex-shrink-0 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">
+              ⚠ {alertCount}
+            </span>
           )}
         </div>
 
-        {/* Spacer */}
+        {/* Error Spike inline banner */}
+        {errorSpike && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-red-50 border border-red-200 rounded-xl flex-shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping flex-shrink-0" />
+            <span className="text-red-600 text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
+              Error Spike — {errorSpikeCount} in 10s
+            </span>
+            <button onClick={() => setErrorSpike(false)} className="text-red-300 hover:text-red-500 transition-colors ml-1">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         <div className="flex-1" />
 
-        {/* Watch */}
-        <div className="flex items-center bg-black/60 border border-white/10 rounded-xl px-2.5 py-1.5 focus-within:border-purple-500/50 transition-all flex-shrink-0">
-          <Activity className="w-3 h-3 text-purple-500 mr-1.5 flex-shrink-0" />
+        {/* Watch input */}
+        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10 transition-all flex-shrink-0 gap-1.5">
+          <Activity className="w-3 h-3 text-sky-500 flex-shrink-0" />
           <input
             type="text" value={newWatchKeyword}
             onChange={e => setNewWatchKeyword(e.target.value)}
@@ -238,48 +287,68 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
               }
             }}
             placeholder="Watch"
-            className="bg-transparent text-white text-[10px] font-black outline-none w-12 placeholder:text-zinc-700"
+            className="bg-transparent text-slate-700 text-[10px] font-bold outline-none w-12 placeholder:text-slate-400"
           />
           {watchlist.length > 0 && (
-            <div className="flex items-center gap-1 ml-1.5 pl-1.5 border-l border-white/10">
+            <div className="flex items-center gap-1 ml-1 pl-1.5 border-l border-slate-200">
               {watchlist.map(w => (
-                <span key={w} className="flex items-center bg-purple-500/20 text-purple-400 text-[9px] font-black px-1.5 py-0.5 rounded border border-purple-500/30">
+                <span key={w} className="flex items-center bg-sky-500/15 text-sky-700 text-[9px] font-black px-1.5 py-0.5 rounded-lg border border-sky-400/30">
                   {w.toUpperCase()}
-                  <X className="w-2 h-2 ml-1 cursor-pointer hover:text-white" onClick={() => setWatchlist(watchlist.filter(x => x !== w))} />
+                  <X className="w-2 h-2 ml-1 cursor-pointer hover:text-sky-900" onClick={() => setWatchlist(watchlist.filter(x => x !== w))} />
                 </span>
               ))}
             </div>
           )}
         </div>
 
-        {/* Search */}
-        <div className="flex items-center bg-black/60 border border-white/10 rounded-xl px-2.5 py-1.5 focus-within:border-cyan-500/50 transition-all flex-shrink-0">
-          <Search className="w-3 h-3 text-cyan-500 mr-1.5 flex-shrink-0" />
+        {/* Search input */}
+        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10 transition-all flex-shrink-0 gap-1.5">
+          <Search className="w-3 h-3 text-sky-500 flex-shrink-0" />
           <input
             type="text" value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') setActiveSearch(searchTerm); }}
             placeholder="Search"
-            className="bg-transparent text-white text-[10px] font-black outline-none w-14 placeholder:text-zinc-700"
+            className="bg-transparent text-slate-700 text-[10px] font-bold outline-none w-14 placeholder:text-slate-400"
           />
           <button
             onClick={() => setIsRegex(r => !r)}
-            className={`ml-1.5 text-[9px] font-black px-1 py-0.5 rounded border transition-all ${
-              isRegex ? 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10' : 'text-zinc-700 border-white/5'
+            className={`text-[9px] font-black px-1.5 py-0.5 rounded-lg border transition-all ${
+              isRegex
+                ? 'text-amber-600 border-amber-400/50 bg-amber-50'
+                : 'text-slate-400 border-slate-200 hover:border-slate-300'
             }`}
           >.*</button>
-          <button onClick={() => setActiveSearch(searchTerm)} className="ml-1 text-[10px] font-black text-zinc-600 hover:text-white transition-colors">Go</button>
+          <button
+            onClick={() => setActiveSearch(searchTerm)}
+            className="text-[10px] font-black text-slate-400 hover:text-sky-600 transition-colors ml-0.5"
+          >Go</button>
         </div>
 
-        {/* Utility buttons */}
-        <div className="flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden flex-shrink-0">
-          <button onClick={() => setFontSize(s => Math.max(10, s - 1))} className="px-2 py-2 text-[10px] font-black text-zinc-600 hover:text-white hover:bg-white/5 border-r border-white/5 transition-all">A-</button>
-          <button onClick={() => setFontSize(s => Math.min(20, s + 1))} className="px-2 py-2 text-[10px] font-black text-zinc-600 hover:text-white hover:bg-white/5 border-r border-white/5 transition-all">A+</button>
+        {/* Utility button group */}
+        <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden flex-shrink-0 bg-slate-50 divide-x divide-slate-200">
+          <button
+            onClick={() => setFontSize(s => Math.max(10, s - 1))}
+            className="px-2.5 py-2 text-[10px] font-black text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+          >A-</button>
+          <button
+            onClick={() => setFontSize(s => Math.min(20, s + 1))}
+            className="px-2.5 py-2 text-[10px] font-black text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+          >A+</button>
           <button
             onClick={() => setIsDimmed(d => !d)}
-            className={`px-2 py-2 text-xs border-r border-white/5 transition-all ${isDimmed ? 'text-violet-400 bg-violet-500/10' : 'text-zinc-600 hover:text-white hover:bg-white/5'}`}
+            title="Dim mode"
+            className={`px-2.5 py-2 text-xs transition-all ${
+              isDimmed
+                ? 'text-sky-600 bg-sky-50'
+                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+            }`}
           >◐</button>
-          <button onClick={downloadLogs} className="p-2 hover:bg-white/5 text-zinc-500 hover:text-cyan-400 border-r border-white/5 transition-all">
+          <button
+            onClick={downloadLogs}
+            title="Download logs"
+            className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-all"
+          >
             <Download className="w-3.5 h-3.5" />
           </button>
           <button
@@ -293,21 +362,23 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                 if (onStatusChange) { onStatusChange('dying'); setTimeout(() => onStatusChange!('stopped'), 2500); }
               }
             }}
-            className={`p-2 transition-all border-r border-white/5 ${isPaused ? 'text-green-500' : 'text-zinc-500 hover:text-red-400'}`}
+            title={isPaused ? 'Resume stream' : 'Pause stream'}
+            className={`p-2 transition-all ${isPaused ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`}
           >
             {isPaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5" />}
           </button>
           <button
             onClick={() => { termInstance.current?.clear(); setAlertCount(0); }}
-            className="p-2 hover:bg-white/5 text-zinc-500 hover:text-red-500 transition-all"
+            title="Clear terminal"
+            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Terminal */}
-      <div ref={terminalRef} className="flex-1 w-full h-full overflow-hidden select-text pb-10 cursor-text" />
+      {/* Terminal — dark background for log readability */}
+      <div ref={terminalRef} className="flex-1 min-h-0 w-full overflow-hidden select-text cursor-text" />
     </div>
   );
 }

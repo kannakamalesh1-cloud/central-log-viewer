@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown } from 'lucide-react';
+import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Clock, Terminal as TerminalIcon } from 'lucide-react';
 
 interface ServerData {
   id: number;
@@ -73,6 +73,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [userForm, setUserForm] = useState({ email: '', password: '', role: 'viewer' });
   const [userSaving, setUserSaving] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
 
@@ -337,34 +338,41 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
 
   return (
-    <div className="relative w-80 h-full flex-shrink-0 overflow-hidden">
+    <div className="relative w-80 h-full flex-shrink-0 overflow-hidden overflow-y-auto">
       {/* Main Sidebar */}
-      <div className={`w-80 h-full flex flex-col bg-white/5 dark:bg-black/30 backdrop-blur-xl border-r border-white/10 dark:border-zinc-800 p-6 overflow-y-auto transition-transform duration-300 ${showAddPanel ? '-translate-x-full' : 'translate-x-0'} absolute inset-0`}>
+      <div className={`w-80 h-full flex flex-col bg-slate-50 backdrop-blur-xl border-r border-slate-200 p-6 overflow-y-auto transition-transform duration-300 ${showAddPanel ? '-translate-x-full' : 'translate-x-0'} absolute inset-0`}>
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3 text-white">
-            <div className="p-2.5 bg-purple-500/20 rounded-xl border border-purple-500/30">
-              <Activity className="w-5 h-5 text-purple-400" />
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-sky-500/20 rounded-xl border border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)]">
+              <Activity className="w-5 h-5 text-sky-600" />
             </div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400">
+            <h1 className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-sky-600 via-sky-500 to-sky-400 tracking-tight">
               PulseLog
             </h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowGuide(true)}
+              title={`${userRole === 'admin' ? 'Admin' : 'User'} Guide`}
+              className="p-1.5 rounded-xl bg-slate-100 border border-slate-200 hover:bg-sky-500/20 hover:border-sky-500/30 text-slate-500 hover:text-sky-600 transition-all shadow-inner"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
             {userRole === 'admin' && (
               <>
                 <button
                   onClick={openUserPanel}
+                  className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all flex items-center justify-center"
                   title="User Management"
-                  className="p-2 rounded-xl bg-blue-600/20 border border-blue-500/30 hover:bg-blue-600/40 text-blue-400 hover:text-blue-300 transition-all font-semibold text-xs flex items-center gap-1.5"
                 >
-                  <KeyRound className="w-4 h-4" /> Users
+                  <KeyRound className="w-4 h-4" />
                 </button>
                 <button
                   onClick={openPanel}
                   title="Add Server"
-                  className="p-2 rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/40 text-purple-400 hover:text-purple-300 transition-all"
+                  className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all shadow-lg"
                 >
                   <Plus className="w-4 h-4" />
                 </button>
@@ -375,9 +383,9 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
         <button
           onClick={onShowDashboard}
-          className="mb-8 w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/5 border border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white transition-all group shadow-inner"
+          className="mb-8 w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-700 hover:bg-sky-500/10 hover:border-sky-500/30 hover:text-sky-700 transition-all group shadow-sm"
         >
-          <LayoutDashboard className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+          <LayoutDashboard className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
           <span className="text-sm font-semibold">Dashboard Overview</span>
         </button>
 
@@ -390,7 +398,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
             <div className="flex-1 relative">
               <button
                 onClick={() => setIsServerDropdownOpen(!isServerDropdownOpen)}
-                className={`w-full flex items-center justify-between bg-zinc-900/80 border text-white text-sm rounded-xl p-3.5 transition-all shadow-2xl backdrop-blur-xl hover:bg-zinc-800/80 ${isServerDropdownOpen ? 'border-purple-500 ring-2 ring-purple-500/10' : 'border-white/10'
+                className={`w-full flex items-center justify-between bg-white border text-slate-800 text-sm rounded-xl p-3.5 transition-all shadow-sm hover:bg-slate-50 ${isServerDropdownOpen ? 'border-sky-500 ring-2 ring-sky-500/10' : 'border-slate-200'
                   }`}
               >
                 <span className="font-medium truncate max-w-[150px]">
@@ -398,26 +406,26 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                     servers.find(s => s.id === selectedServerId)?.name || "Server Selected"
                   ) : "Choose server..."}
                 </span>
-                <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${isServerDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
+                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isServerDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
               </button>
 
               {isServerDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900/95 border border-white/10 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] py-2 z-[100] max-h-[300px] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200 backdrop-blur-3xl custom-scrollbar border-t-white/20">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-[100] max-h-[300px] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-200 custom-scrollbar">
                   {servers.length === 0 ? (
-                    <div className="px-4 py-3 text-[11px] text-zinc-500 italic">No servers configured</div>
+                    <div className="px-4 py-3 text-[11px] text-slate-500 italic">No servers configured</div>
                   ) : (
                     servers.map(s => (
                       <button
                         key={s.id}
                         onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); }}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-white/5 ${selectedServerId === s.id ? 'text-purple-400 bg-purple-500/5' : 'text-zinc-300'}`}
+                        className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 hover:bg-slate-50 ${selectedServerId === s.id ? 'text-sky-600 bg-sky-500/5' : 'text-slate-600'}`}
                       >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-purple-500/10 border-purple-500/20' : 'bg-black/20 border-white/5 group-hover:border-white/10'}`}>
-                          <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-purple-400' : 'text-zinc-500'}`} />
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/10 border-sky-500/20' : 'bg-slate-100 border-slate-200'}`}>
+                          <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-sky-600' : 'text-slate-400'}`} />
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="font-semibold truncate leading-none">{s.name}</span>
-                          <span className="text-[10px] text-zinc-500 font-mono mt-1 opacity-70 truncate">{s.host}</span>
+                          <span className="font-semibold truncate leading-none text-slate-800">{s.name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono mt-1 opacity-70 truncate">{s.host}</span>
                         </div>
                       </button>
                     ))
@@ -430,7 +438,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                 <button
                   type="button"
                   onClick={() => handleEditClick(selectedServerId)}
-                  className="p-3 rounded-xl border border-zinc-700/50 bg-zinc-900/50 text-zinc-500 hover:text-purple-400 hover:border-purple-500/30 transition-all flex items-center justify-center"
+                  className="p-3 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-sky-600 hover:border-sky-500/30 transition-all flex items-center justify-center shadow-sm"
                   title="Edit server"
                 >
                   <Settings className="w-4 h-4" />
@@ -446,7 +454,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                   }}
                   className={`p-3 rounded-xl border transition-all flex items-center justify-center ${confirmDelete === selectedServerId
                     ? 'bg-red-500/20 border-red-500/50 text-red-400 font-bold text-[10px] uppercase min-w-[80px]'
-                    : 'bg-zinc-900/50 border-zinc-700/50 text-zinc-500 hover:text-red-400 hover:border-red-500/30'
+                    : 'bg-white border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-500/30 shadow-sm'
                     }`}
                   title={confirmDelete === selectedServerId ? "Click to confirm deletion" : "Delete server"}
                 >
@@ -458,7 +466,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           {servers.length === 0 && (
             <button
               onClick={openPanel}
-              className="flex items-center gap-2 text-xs text-purple-400 hover:text-purple-300 mt-1 ml-1 transition-colors"
+              className="flex items-center gap-2 text-xs text-sky-600 hover:text-sky-500 mt-1 ml-1 transition-colors"
             >
               <Plus className="w-3 h-3" /> Add your first server
             </button>
@@ -469,13 +477,13 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
         {selectedServerId && (
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 2. Select Log Target
               </label>
               <button
                 onClick={refreshSources}
                 disabled={loadingSources}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-purple-400 transition-all disabled:opacity-50"
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-sky-600 transition-all disabled:opacity-50"
                 title="Refresh list"
               >
                 <RotateCw className={`w-3.5 h-3.5 ${loadingSources ? 'animate-spin' : ''}`} />
@@ -485,11 +493,11 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
             {/* Search Bar */}
             {!loadingSources && !sourceError && logSources.length > 0 && (
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search logs, containers, pods..."
-                  className="w-full bg-zinc-900/30 border border-zinc-700/30 text-white text-xs rounded-xl pl-9 pr-3 py-2.5 outline-none focus:border-purple-500/50 focus:bg-zinc-900/60 transition-all placeholder:text-zinc-600"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2.5 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/10 transition-all placeholder:text-slate-400 shadow-sm"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -497,9 +505,9 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
             )}
 
             {loadingSources ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-10 border border-white/5 rounded-xl bg-black/10">
-                <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />
-                <span className="text-xs text-zinc-500 font-medium">Scanning server for logs...</span>
+              <div className="flex flex-col items-center justify-center gap-3 py-10 border border-slate-200 rounded-xl bg-slate-100/60">
+                <Loader2 className="w-6 h-6 text-sky-500 animate-spin" />
+                <span className="text-xs text-slate-500 font-medium">Scanning server for logs...</span>
               </div>
             ) : sourceError ? (
               <div className="flex flex-col items-center gap-2 text-red-400 text-xs py-8 px-4 border border-red-500/10 rounded-xl bg-red-500/5 text-center">
@@ -562,14 +570,14 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                             <div key={type} className="flex flex-col gap-1 mb-1">
                               <div
                                 onClick={() => toggleSection(type)}
-                                className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all cursor-pointer"
+                                className="flex items-center justify-between w-full px-1 py-3 group hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
                               >
                                 <div className="flex items-center gap-2">
-                                  <div className={`w-1.5 h-3.5 bg-cyan-500 rounded-full transition-transform group-hover:scale-y-125`} />
-                                  <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest leading-none">{config.label}</span>
+                                  <div className={`w-1.5 h-3.5 bg-sky-500 rounded-full transition-transform group-hover:scale-y-125`} />
+                                  <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest leading-none">{config.label}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                                 </div>
                               </div>
 
@@ -579,15 +587,15 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                                     <button
                                       key={ns}
                                       onClick={() => setSelectedNamespace(ns)}
-                                      className="w-full text-left text-[12px] px-3 py-3 rounded-xl border bg-white/[0.02] border-white/5 text-zinc-300 hover:bg-white/[0.05] hover:text-white transition-all flex items-center justify-between group"
+                                      className="w-full text-left text-[12px] px-3 py-3 rounded-xl border bg-white border-slate-200 text-slate-800 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-900 transition-all flex items-center justify-between group shadow-sm"
                                     >
                                       <div className="flex items-center gap-2.5">
-                                        <Cloud className="w-4 h-4 text-cyan-500/60" />
+                                        <Cloud className="w-4 h-4 text-sky-500" />
                                         <span className="font-bold">{ns}</span>
                                       </div>
                                       <div className="flex items-center gap-2">
-                                        <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-500 font-bold">{sources.filter(s => s.identifier.startsWith(ns + '/')).length}</span>
-                                        <ChevronRight className="w-3.5 h-3.5 text-zinc-700" />
+                                        <span className="text-[10px] bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-lg text-sky-700 font-bold">{sources.filter(s => s.identifier.startsWith(ns + '/')).length}</span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-sky-600 transition-colors" />
                                       </div>
                                     </button>
                                   ))}
@@ -607,23 +615,23 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                           <div key={type} className="flex flex-col gap-1 mb-1">
                             <div
                               onClick={() => toggleSection(type)}
-                              className="flex items-center justify-between w-full px-1 py-3 group hover:bg-white/5 rounded-xl transition-all cursor-pointer"
+                              className="flex items-center justify-between w-full px-1 py-3 group hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
                             >
                               <div className="flex items-center justify-between w-full">
                                 <div className="flex items-center gap-2">
-                                  <div className={`w-1.5 h-3.5 bg-white/20 rounded-full transition-transform group-hover:scale-y-125`} style={{ backgroundColor: config.color.includes('text-') ? undefined : config.color }} />
-                                  <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest leading-none">{config.label}</span>
+                                  <div className={`w-1.5 h-3.5 rounded-full transition-transform group-hover:scale-y-125 ${config.color.replace('text-', 'bg-')}`} />
+                                  <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest leading-none">{config.label}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
                                   {type === 'k8s' && selectedNamespace && !searchTerm && (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setSelectedNamespace(null); }}
-                                      className="text-[10px] font-bold text-cyan-500 hover:text-cyan-400 uppercase tracking-tighter"
+                                      className="text-[10px] font-bold text-sky-600 hover:text-sky-500 uppercase tracking-tighter"
                                     >
                                       Close {selectedNamespace}
                                     </button>
                                   )}
-                                  <ChevronDown className={`w-3.5 h-3.5 text-zinc-700 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                                 </div>
                               </div>
                             </div>
@@ -649,14 +657,14 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                                       key={idx}
                                       onClick={() => handleSourceSelect(source.identifier, source.type)}
                                       className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between ${selectedSource === source.identifier
-                                        ? 'bg-purple-600/15 border-purple-500/40 text-white shadow-lg shadow-purple-500/5'
-                                        : 'bg-white/[0.02] border-white/5 text-zinc-300 hover:bg-white/[0.05] hover:text-white hover:border-white/10'
+                                        ? 'bg-sky-500/15 border-sky-500/40 text-sky-900 shadow-md shadow-sky-500/10'
+                                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-slate-900 hover:border-sky-300 shadow-sm'
                                         }`}
                                     >
                                       <div className="flex items-center gap-3.5 min-w-0">
                                         <div className={`p-2 rounded-lg border transition-colors ${selectedSource === source.identifier
-                                          ? 'bg-purple-500/20 border-purple-500/30 text-purple-400'
-                                          : `bg-black/40 border-white/5 ${config.color} opacity-60 group-hover:opacity-100`
+                                          ? 'bg-sky-500/20 border-sky-500/30 text-sky-600'
+                                          : `bg-white border-slate-200 ${config.color} opacity-70 group-hover:opacity-100`
                                           }`}>
                                           <Icon className="w-4 h-4" />
                                         </div>
@@ -689,7 +697,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                                       </div>
 
                                       {selectedSource === source.identifier ? (
-                                        <Activity className="w-4 h-4 text-purple-400 animate-pulse" />
+                                        <Activity className="w-4 h-4 text-sky-500 animate-pulse" />
                                       ) : (
                                         <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600" />
                                       )}
@@ -715,29 +723,29 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           </div>
         )}
 
-        <div className="mt-auto pt-6 text-xs text-zinc-600 flex items-center justify-center gap-2">
+        <div className="mt-auto pt-6 text-xs text-slate-400 flex items-center justify-center gap-2">
           <Lock className="w-3 h-3" />
           Stream is purely transient and secure.
         </div>
       </div>
 
       {/* Add Server Panel (slides in from right) */}
-      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-black/60 backdrop-blur-2xl border-r border-white/10 transition-transform duration-300 ${showAddPanel ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-slate-50 backdrop-blur-2xl border-r border-slate-200 transition-transform duration-300 ${showAddPanel ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* Panel Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/20 rounded-xl border border-purple-500/30">
-              {editingId ? <Settings className="w-5 h-5 text-purple-400" /> : <Server className="w-5 h-5 text-purple-400" />}
+            <div className="p-2 bg-sky-500/20 rounded-xl border border-sky-500/30">
+              {editingId ? <Settings className="w-5 h-5 text-sky-600" /> : <Server className="w-5 h-5 text-sky-600" />}
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">{editingId ? 'Edit Server' : 'Add Server'}</h2>
-              <p className="text-xs text-zinc-500">{editingId ? 'Updating configuration' : 'SSH key authentication'}</p>
+              <h2 className="text-sm font-bold text-slate-900">{editingId ? 'Edit Server' : 'Add Server'}</h2>
+              <p className="text-xs text-slate-500">{editingId ? 'Updating configuration' : 'SSH key authentication'}</p>
             </div>
           </div>
           <button
             onClick={closePanel}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white transition-all"
+            className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-900 transition-all"
           >
             <X className="w-4 h-4" />
           </button>
@@ -748,32 +756,32 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
           {/* Server Name */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Server Name</label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Server Name</label>
             <input
               name="name"
               value={form.name}
               onChange={handleFormChange}
               placeholder="e.g. Production Web"
-              className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-purple-500 transition-colors placeholder:text-zinc-600"
+              className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 shadow-sm"
             />
           </div>
 
           {/* Host */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">IP Address / Hostname</label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">IP Address / Hostname</label>
             <input
               name="host"
               value={form.host}
               onChange={handleFormChange}
               placeholder="e.g. 192.168.1.100 or server.com"
-              className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-purple-500 transition-colors placeholder:text-zinc-600 font-mono"
+              className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
             />
           </div>
 
           {/* Port + Username row */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">SSH Port</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">SSH Port</label>
               <input
                 name="port"
                 value={form.port}
@@ -782,17 +790,17 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                 type="number"
                 min="1"
                 max="65535"
-                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-purple-500 transition-colors placeholder:text-zinc-600 font-mono"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">SSH User</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">SSH User</label>
               <input
                 name="username"
                 value={form.username}
                 onChange={handleFormChange}
                 placeholder="ubuntu"
-                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-purple-500 transition-colors placeholder:text-zinc-600 font-mono"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
               />
             </div>
           </div>
@@ -800,13 +808,13 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           {/* Private Key */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                 <KeyRound className="w-3 h-3" /> Private Key
               </label>
               <button
                 type="button"
                 onClick={() => setShowKey(v => !v)}
-                className="text-xs text-zinc-500 hover:text-purple-400 flex items-center gap-1 transition-colors"
+                className="text-xs text-slate-400 hover:text-sky-600 flex items-center gap-1 transition-colors"
               >
                 {showKey ? <><EyeOff className="w-3 h-3" /> Hide</> : <><Eye className="w-3 h-3" /> Show</>}
               </button>
@@ -817,11 +825,11 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
               onChange={handleFormChange}
               placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
               rows={6}
-              className={`w-full bg-black/40 border border-white/10 text-white text-xs rounded-xl px-3 py-2.5 outline-none focus:border-purple-500 transition-colors placeholder:text-zinc-600 font-mono resize-none leading-relaxed ${!showKey ? 'text-security-disc' : ''}`}
+              className={`w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono resize-none leading-relaxed shadow-sm ${!showKey ? 'text-security-disc' : ''}`}
               style={!showKey ? { WebkitTextSecurity: 'disc' } as React.CSSProperties : {}}
             />
-            <p className="text-[10px] text-zinc-600 leading-relaxed">
-              Paste the contents of your <span className="text-zinc-500 font-mono">~/.ssh/id_ed25519</span> private key. It will be AES-256 encrypted before storage.
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Paste the contents of your <span className="text-slate-500 font-mono">~/.ssh/id_ed25519</span> private key. It will be AES-256 encrypted before storage.
             </p>
           </div>
 
@@ -844,7 +852,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
             type="button"
             onClick={handleTestConnection}
             disabled={testing || saving}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-all text-xs font-bold disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-300 transition-all text-xs font-bold disabled:opacity-50 shadow-sm"
           >
             {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
             Test Connection
@@ -864,7 +872,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
           <button
             type="submit"
             disabled={saving}
-            className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-purple-500/20 transition-all disabled:opacity-50"
+            className="mt-2 w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-black uppercase tracking-widest py-3.5 rounded-xl shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
             {editingId ? 'Update Server' : 'Save Server'}
@@ -873,18 +881,18 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
       </div>
 
       {/* User Management Panel */}
-      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-black/60 backdrop-blur-2xl border-r border-white/10 transition-transform duration-300 ${showUserPanel ? 'translate-x-0' : 'translate-x-full'}`}>
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
+      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-slate-50 backdrop-blur-2xl border-r border-slate-200 transition-transform duration-300 ${showUserPanel ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/20 rounded-xl border border-blue-500/30">
-              <Users className="w-5 h-5 text-blue-400" />
+            <div className="p-2 bg-sky-500/20 rounded-xl border border-sky-500/30">
+              <Users className="w-5 h-5 text-sky-600" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">User Access</h2>
-              <p className="text-xs text-zinc-500">Manage team permissions</p>
+              <h2 className="text-sm font-bold text-slate-900">User Access</h2>
+              <p className="text-xs text-slate-500">Manage team permissions</p>
             </div>
           </div>
-          <button onClick={closeUserPanel} className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-white">
+          <button onClick={closeUserPanel} className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-900">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -892,33 +900,33 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
         <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6">
           <form onSubmit={handleAddUser} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Email Address</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Email Address</label>
               <input
                 type="email"
                 required
                 value={userForm.email}
                 onChange={e => setUserForm({ ...userForm, email: e.target.value })}
-                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
                 placeholder="user@example.com"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Password</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password</label>
               <input
                 type="password"
                 required
                 value={userForm.password}
                 onChange={e => setUserForm({ ...userForm, password: e.target.value })}
-                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
                 placeholder="••••••••"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Role</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Role</label>
               <select
                 value={userForm.role}
                 onChange={e => setUserForm({ ...userForm, role: e.target.value })}
-                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
               >
                 <option value="viewer">Viewer (Read Only)</option>
                 <option value="admin">Admin (Full Control)</option>
@@ -927,24 +935,24 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
             <button
               type="submit"
               disabled={userSaving}
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50"
+              className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 shadow-md"
             >
               {userSaving ? 'Adding...' : 'Add User'}
             </button>
           </form>
 
           <div className="space-y-3">
-            <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-1">Active Users</h3>
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Active Users</h3>
             {users.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group">
+              <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 group shadow-sm">
                 <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-bold text-white truncate">{u.email}</span>
-                  <span className={`text-[9px] uppercase font-black tracking-tighter ${u.role === 'admin' ? 'text-purple-400' : 'text-zinc-500'}`}>{u.role}</span>
+                  <span className="text-xs font-bold text-slate-800 truncate">{u.email}</span>
+                  <span className={`text-[9px] uppercase font-black tracking-tighter ${u.role === 'admin' ? 'text-sky-600' : 'text-slate-400'}`}>{u.role}</span>
                 </div>
                 {u.role !== 'admin' && (
                   <button
                     onClick={() => handleDeleteUser(u.id)}
-                    className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -952,6 +960,284 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Admin User Guide Panel */}
+      <div className={`absolute inset-0 bg-slate-50 z-50 transition-transform duration-500 ease-in-out flex flex-col p-6 overflow-y-auto ${showGuide ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-cyan-500/20 rounded-xl border border-cyan-500/30">
+              <BookOpen className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 leading-tight">{userRole === 'admin' ? 'Admin' : 'User'} Guide</h2>
+              <p className="text-[10px] font-black text-sky-600 uppercase tracking-widest opacity-80">Platform Documentation</p>
+            </div>
+          </div>
+          <button onClick={() => setShowGuide(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all text-slate-400 hover:text-slate-900">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-8 pb-10">
+          <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
+                <Globe className="w-4 h-4 text-blue-400" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">What is PulseLog?</h3>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              PulseLog is a mission-critical infrastructure monitoring platform. It allows real-time log streaming from remote servers via secure SSH tunnels. No sensitive logs are stored on this server; they are streamed directly to your browser using <span className="text-cyan-400">Socket.io</span> and rendered in a high-performance Xterm.js terminal.
+            </p>
+          </section>
+
+          {userRole === 'admin' ? (
+            <>
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center border border-sky-500/30">
+                    <Plus className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Adding Servers</h3>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">1</div>
+                    <p className="text-xs text-slate-500 font-medium">Click the <span className="text-slate-900">+</span> button in the header.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">2</div>
+                    <p className="text-xs text-slate-500 font-medium">Provide SSH credentials. Use a private key for maximum security.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">3</div>
+                    <p className="text-xs text-slate-500 font-medium">Test connection. Ensure <span className="text-cyan-400">log-wrapper.sh</span> exists on the target node.</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center border border-orange-500/30">
+                    <Cpu className="w-4 h-4 text-orange-400" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Target Node Setup</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-4">
+                  Follow these steps to prepare a remote server (node) for PulseLog monitoring:
+                </p>
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-cyan-400">01</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-1">Deploy Wrapper Script</p>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Copy <code className="text-cyan-500">log-wrapper.sh</code> from the PulseLog root directory to the target server, ideally in <code className="text-zinc-500 font-bold">/usr/log/bin/</code>.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-cyan-400">02</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-1">Grant Permissions</p>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Make the script executable: <br />
+                        <code className="text-sky-600">chmod +x /usr/log/bin/log-wrapper.sh</code>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-cyan-400">03</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-1">Configure SSH Access</p>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        1. Prepare the SSH directory: <br />
+                        <code className="text-sky-600">mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys</code> <br /><br />
+                        2. Add the public key to <code className="text-zinc-500 font-bold">~/.ssh/authorized_keys</code>, prepending these security restrictions (all on one line): <br />
+                        <code className="text-sky-600 bg-sky-50 p-2 rounded block mt-1 break-all border border-sky-100 font-mono">
+                          command="/usr/log/bin/log-wrapper.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAA...
+                        </code>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-cyan-400">04</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-1">Register in Sidebar</p>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Use the <span className="text-slate-900">+</span> button to add the server. PulseLog will now securely tunnel through SSH to execute the wrapper.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
+                    <Users className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">User Management</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-3">
+                  Click the <span className="text-blue-400">Users</span> button to manage operators.
+                </p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <Shield className="w-3 h-3 text-red-500" /> Admins: Full control over nodes & users.
+                  </li>
+                  <li className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <Activity className="w-3 h-3 text-green-500" /> Viewers: Can stream logs but cannot modify nodes.
+                  </li>
+                </ul>
+              </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+                    <Shield className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Security Audit Engine</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-4">
+                  PulseLog features a high-performance, immutable audit trail. Every interaction is cryptographically associated with a user and server.
+                </p>
+
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Search className="w-3 h-3 text-cyan-400" />
+                      <span className="text-[10px] font-black text-white uppercase tracking-widest">Smart Search Features</span>
+                    </div>
+                    <ul className="space-y-2">
+                      <li className="text-[10px] font-medium text-slate-400 leading-normal">
+                        • <span className="text-zinc-300">Time Range:</span> Search <code className="text-cyan-500">"5:00 pm to 6:00 pm"</code> to filter specific shift windows.
+                      </li>
+                      <li className="text-[10px] font-medium text-slate-400 leading-normal">
+                        • <span className="text-zinc-300">Date Range:</span> Use <code className="text-cyan-500">"apr 20 to 21"</code> for multi-day investigations.
+                      </li>
+                      <li className="text-[10px] font-medium text-slate-400 leading-normal">
+                        • <span className="text-zinc-300">Multi-Field:</span> Search by email, server name, or log source simultaneously.
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Download className="w-3 h-3 text-emerald-400" />
+                      <span className="text-[10px] font-black text-white uppercase tracking-widest">Compliance & Export</span>
+                    </div>
+                    <p className="text-[10px] font-medium text-slate-400 leading-normal">
+                      Export the entire filtered result set to <span className="text-zinc-300">CSV format</span> for offline compliance reporting or SOC integration.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center border border-sky-500/30">
+                    <LayoutDashboard className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Platform Features</h3>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Real-time Terminal:</span> Experience near-zero latency streaming using high-performance socket technology.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Stream Buffer:</span> Pause the live stream at any time to inspect specific events without losing incoming data.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-violet-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Quick Recall:</span> Access your recently viewed log sources instantly via the <Clock className="inline w-3 h-3 mb-0.5" /> icon in the top header.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : (
+            <>
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center border border-sky-500/30">
+                    <LayoutDashboard className="w-4 h-4 text-sky-600" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Key Features</h3>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Real-time Terminal:</span> Experience near-zero latency streaming using high-performance socket technology.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Smart Search:</span> Filter live logs using plain text or powerful Regular Expressions (Regex).
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Stream Buffer:</span> Pause the live stream at any time to inspect specific events without losing incoming data.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-violet-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Quick Recall:</span> Access your recently viewed log sources instantly via the <Clock className="inline w-3 h-3 mb-0.5" /> icon in the top header.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
+
+          <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center border border-orange-500/30">
+                <Search className="w-4 h-4 text-orange-400" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">How to View Logs</h3>
+            </div>
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">1</div>
+                <p className="text-xs text-slate-500 font-medium">Click <span className="text-slate-900">"Choose server..."</span> in the sidebar and select a target node.</p>
+              </div>
+              <div className="flex gap-4">
+                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">2</div>
+                <p className="text-xs text-slate-500 font-medium">Browse through categories like <span className="text-cyan-400">Docker</span>, <span className="text-sky-600">System</span>, or <span className="text-blue-400">Auth</span>.</p>
+              </div>
+              <div className="flex gap-4">
+                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">3</div>
+                <p className="text-xs text-slate-500 font-medium">Click on a specific log source to launch the terminal monitor.</p>
+              </div>
+              <div className="flex gap-4">
+                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">4</div>
+                <p className="text-xs text-slate-500 font-medium">Use the <span className="text-orange-400">Search</span> bar or <span className="text-cyan-400">Pause</span> button in the terminal header to interact.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="mt-auto pt-6 border-t border-slate-200 flex flex-col items-center">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">PulseLog System Secure</span>
+          </div>
+          <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">Version 2.4.0 • Infrastructure First</p>
         </div>
       </div>
     </div>
