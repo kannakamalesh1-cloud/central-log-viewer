@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Clock, Terminal as TerminalIcon } from 'lucide-react';
 
 interface ServerData {
@@ -77,6 +77,34 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
   const [showGuide, setShowGuide] = useState(false);
 
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
+
+  // Drag to scroll state
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isGrabDragging, setIsGrabDragging] = useState(false);
+  const [grabStartY, setGrabStartY] = useState(0);
+  const [grabScrollTop, setGrabScrollTop] = useState(0);
+
+  const handleGrabMouseDown = (e: React.MouseEvent) => {
+    // Only drag if clicking the background, not buttons or inputs
+    if ((e.target as HTMLElement).closest('button, input, textarea')) return;
+
+    if (!scrollRef.current) return;
+    setIsGrabDragging(true);
+    setGrabStartY(e.pageY - scrollRef.current.offsetTop);
+    setGrabScrollTop(scrollRef.current.scrollTop);
+  };
+
+  const handleGrabMouseMove = (e: React.MouseEvent) => {
+    if (!isGrabDragging || !scrollRef.current) return;
+    e.preventDefault();
+    const y = e.pageY - scrollRef.current.offsetTop;
+    const walk = (y - grabStartY) * 1.5;
+    scrollRef.current.scrollTop = grabScrollTop - walk;
+  };
+
+  const handleGrabMouseUp = () => {
+    setIsGrabDragging(false);
+  };
 
   const fetchServers = () => {
     fetch('/api/servers')
@@ -339,9 +367,16 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
 
   return (
-    <div className="relative w-80 h-full flex-shrink-0 overflow-hidden overflow-y-auto">
+    <div className={`relative w-80 h-full flex-shrink-0 overflow-hidden select-none`}>
       {/* Main Sidebar */}
-      <div className={`w-80 h-full flex flex-col bg-slate-50 backdrop-blur-xl border-r border-slate-200 p-6 overflow-y-auto transition-transform duration-300 ${showAddPanel ? '-translate-x-full' : 'translate-x-0'} absolute inset-0`}>
+      <div
+        ref={scrollRef}
+        onMouseDown={handleGrabMouseDown}
+        onMouseMove={handleGrabMouseMove}
+        onMouseUp={handleGrabMouseUp}
+        onMouseLeave={handleGrabMouseUp}
+        className={`w-80 h-full flex flex-col bg-slate-50 backdrop-blur-xl border-r border-slate-200 p-6 overflow-y-auto transition-transform duration-300 ${showAddPanel ? '-translate-x-full' : 'translate-x-0'} absolute inset-0 ${isGrabDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      >
 
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
@@ -427,14 +462,14 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                     </div>
                   </div>
                   <div className="overflow-y-auto custom-scrollbar flex-1">
-                    {servers.filter(s => 
-                      s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) || 
+                    {servers.filter(s =>
+                      s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
                       s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
                     ).length === 0 ? (
                       <div className="px-4 py-8 text-center">
                         <p className="text-[11px] text-slate-500 italic">No servers found</p>
                         {serverSearchTerm && (
-                          <button 
+                          <button
                             onClick={(e) => { e.stopPropagation(); setServerSearchTerm(''); }}
                             className="mt-2 text-[10px] font-bold text-sky-600 hover:text-sky-500 uppercase tracking-tight"
                           >
@@ -444,8 +479,8 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                       </div>
                     ) : (
                       servers
-                        .filter(s => 
-                          s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) || 
+                        .filter(s =>
+                          s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
                           s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
                         )
                         .map(s => (
@@ -765,7 +800,12 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
       </div>
 
       {/* Add Server Panel (slides in from right) */}
-      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-slate-50 backdrop-blur-2xl border-r border-slate-200 transition-transform duration-300 ${showAddPanel ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`h-full absolute inset-0 flex flex-col bg-slate-50 backdrop-blur-2xl border-r border-slate-200 transition-transform duration-300 ${showAddPanel ? 'translate-x-0' : 'translate-x-full'} overflow-y-auto ${isGrabDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={handleGrabMouseDown}
+        onMouseMove={handleGrabMouseMove}
+        onMouseUp={handleGrabMouseUp}
+        onMouseLeave={handleGrabMouseUp}
+      >
 
         {/* Panel Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200">
@@ -1144,17 +1184,17 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Search className="w-3 h-3 text-cyan-400" />
-                      <span className="text-[10px] font-black text-white uppercase tracking-widest">Smart Search Features</span>
+                      <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Smart Search Features</span>
                     </div>
                     <ul className="space-y-2">
-                      <li className="text-[10px] font-medium text-slate-400 leading-normal">
-                        • <span className="text-zinc-300">Time Range:</span> Search <code className="text-cyan-500">"5:00 pm to 6:00 pm"</code> to filter specific shift windows.
+                      <li className="text-[10px] font-medium text-slate-500 leading-normal">
+                        • <span className="text-slate-700 font-bold">Time Range:</span> Search <code className="text-cyan-600 font-bold">"5:00 pm to 6:00 pm"</code> to filter specific shift windows.
                       </li>
-                      <li className="text-[10px] font-medium text-slate-400 leading-normal">
-                        • <span className="text-zinc-300">Date Range:</span> Use <code className="text-cyan-500">"apr 20 to 21"</code> for multi-day investigations.
+                      <li className="text-[10px] font-medium text-slate-500 leading-normal">
+                        • <span className="text-slate-700 font-bold">Date Range:</span> Use <code className="text-cyan-600 font-bold">"apr 20 to 21"</code> for multi-day investigations.
                       </li>
-                      <li className="text-[10px] font-medium text-slate-400 leading-normal">
-                        • <span className="text-zinc-300">Multi-Field:</span> Search by email, server name, or log source simultaneously.
+                      <li className="text-[10px] font-medium text-slate-500 leading-normal">
+                        • <span className="text-slate-700 font-bold">Multi-Field:</span> Search by email, server name, or log source simultaneously.
                       </li>
                     </ul>
                   </div>
@@ -1162,10 +1202,10 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Download className="w-3 h-3 text-emerald-400" />
-                      <span className="text-[10px] font-black text-white uppercase tracking-widest">Compliance & Export</span>
+                      <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Compliance & Export</span>
                     </div>
-                    <p className="text-[10px] font-medium text-slate-400 leading-normal">
-                      Export the entire filtered result set to <span className="text-zinc-300">CSV format</span> for offline compliance reporting or SOC integration.
+                    <p className="text-[10px] font-medium text-slate-500 leading-normal">
+                      Export the entire filtered result set to <span className="text-slate-700 font-bold">CSV format</span> for offline compliance reporting or SOC integration.
                     </p>
                   </div>
                 </div>

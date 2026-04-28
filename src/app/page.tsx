@@ -106,9 +106,9 @@ export default function Home() {
         <div className="absolute inset-0 z-0 overflow-hidden">
           <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-sky-200/30 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-100/40 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '12s', animationDelay: '2s' }} />
-          
+
           {/* Decorative Floating "Infrastructure" Elements in a strict grid alignment */}
-          
+
           {/* Row 1 (5%) - Outer Tracks */}
           <div className="absolute top-[5%] left-[1%] w-44 h-24 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-2xl p-2.5 shadow-sm hidden lg:block animate-in fade-in slide-in-from-left-8 duration-1000 pointer-events-none">
             <div className="flex items-center gap-3 mb-3">
@@ -139,122 +139,122 @@ export default function Home() {
 
           {/* Row 2 (17%) - Inner Tracks */}
           <div className="absolute top-[17%] left-[13%] w-40 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-2xl p-2.5 shadow-sm hidden lg:block animate-in fade-in slide-in-from-top-12 duration-1000 delay-1200 pointer-events-none">
-             <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-blue-600" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cluster Health</span>
-             </div>
-             <div className="grid grid-cols-5 gap-1">
-                {[1, 1, 1, 1, 1, 1, 1, 1, 1, 0].map((v, i) => (
-                   <div key={i} className={`h-1 rounded-full ${v ? 'bg-blue-400' : 'bg-slate-200'}`} />
-                ))}
-             </div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-blue-600" />
+              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cluster Health</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {[1, 1, 1, 1, 1, 1, 1, 1, 1, 0].map((v, i) => (
+                <div key={i} className={`h-1 rounded-full ${v ? 'bg-blue-400' : 'bg-slate-200'}`} />
+              ))}
+            </div>
           </div>
 
           <div className="absolute top-[17%] right-[13%] w-40 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-top-12 duration-1000 delay-800 pointer-events-none">
-             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-purple-600" />
-                </div>
-                <div className="flex flex-col">
-                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">AI Insights</span>
-                   <span className="text-[10px] font-bold text-slate-700">Patterns Detected</span>
-                </div>
-             </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-purple-600" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">AI Insights</span>
+                <span className="text-[10px] font-bold text-slate-700">Patterns Detected</span>
+              </div>
+            </div>
           </div>
 
           {/* Row 3 (29%) - Outer Tracks */}
           <div className="absolute top-[29%] left-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-left-12 duration-1000 delay-200 pointer-events-none">
-             <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 bg-pink-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-pink-600" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Latency</span>
-             </div>
-             <div className="flex items-center gap-1.5 px-2 py-1 bg-pink-500/5 rounded-lg border border-pink-500/10">
-                <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-pink-600 font-mono">12ms Avg</span>
-             </div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-pink-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-pink-600" />
+              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Network Latency</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-pink-500/5 rounded-lg border border-pink-500/10">
+              <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-pink-600 font-mono">12ms Avg</span>
+            </div>
           </div>
 
           <div className="absolute top-[29%] right-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-right-12 duration-1000 delay-1400 pointer-events-none">
-             <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 bg-teal-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-teal-600" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Memory Load</span>
-             </div>
-             <div className="flex justify-between items-end gap-0.5 h-6">
-                {[30, 50, 40, 60, 80, 55, 45, 70].map((h, i) => (
-                   <div key={i} className="flex-1 bg-teal-400/30 rounded-t-sm" style={{ height: `${h}%` }} />
-                ))}
-             </div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 bg-teal-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-teal-600" />
+              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Memory Load</span>
+            </div>
+            <div className="flex justify-between items-end gap-0.5 h-6">
+              {[30, 50, 40, 60, 80, 55, 45, 70].map((h, i) => (
+                <div key={i} className="flex-1 bg-teal-400/30 rounded-t-sm" style={{ height: `${h}%` }} />
+              ))}
+            </div>
           </div>
 
           {/* Row 4 (41%) - Inner Tracks */}
           <div className="absolute top-[41%] left-[13%] w-40 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-top-12 duration-1000 delay-400 pointer-events-none">
-             <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">CPU Load</span>
-                <span className="text-[9px] font-bold text-sky-600">24%</span>
-             </div>
-             <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                <div className="bg-sky-500 h-full w-[24%]" />
-             </div>
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">CPU Load</span>
+              <span className="text-[9px] font-bold text-sky-600">24%</span>
+            </div>
+            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+              <div className="bg-sky-500 h-full w-[24%]" />
+            </div>
           </div>
 
           <div className="absolute top-[41%] right-[13%] w-40 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-1100 pointer-events-none">
-             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-yellow-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-yellow-600" />
-                </div>
-                <div className="flex flex-col">
-                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Stream Latency</span>
-                   <span className="text-[10px] font-bold text-slate-700">2.1ms Avg</span>
-                </div>
-             </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-yellow-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-yellow-600" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Stream Latency</span>
+                <span className="text-[10px] font-bold text-slate-700">2.1ms Avg</span>
+              </div>
+            </div>
           </div>
 
           {/* Row 5 (53%) - Outer Tracks */}
           <div className="absolute top-[53%] left-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-left-12 duration-1000 delay-1300 pointer-events-none">
-             <div className="flex items-center gap-2 mb-2">
-                <Globe className="w-3.5 h-3.5 text-orange-500" />
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Traffic Flow</span>
-             </div>
-             <div className="text-[10px] font-bold text-slate-700 flex items-baseline gap-1">
-                <span>1.4k</span>
-                <span className="text-[8px] text-slate-400 uppercase">req/s</span>
-             </div>
+            <div className="flex items-center gap-2 mb-2">
+              <Globe className="w-3.5 h-3.5 text-orange-500" />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Traffic Flow</span>
+            </div>
+            <div className="text-[10px] font-bold text-slate-700 flex items-baseline gap-1">
+              <span>1.4k</span>
+              <span className="text-[8px] text-slate-400 uppercase">req/s</span>
+            </div>
           </div>
 
           <div className="absolute top-[53%] right-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-2xl p-3 shadow-sm hidden lg:block animate-in fade-in slide-in-from-right-8 duration-1000 delay-300 pointer-events-none">
-             <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 bg-red-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-red-600" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Health</span>
-             </div>
-             <div className="flex items-center gap-2">
-                <div className="flex-1 h-1 bg-red-500/20 rounded-full overflow-hidden">
-                   <div className="bg-red-500 h-full w-[98%]" />
-                </div>
-                <span className="text-[9px] font-bold text-red-600">98%</span>
-             </div>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 bg-red-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-red-600" />
+              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Health</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1 bg-red-500/20 rounded-full overflow-hidden">
+                <div className="bg-red-500 h-full w-[98%]" />
+              </div>
+              <span className="text-[9px] font-bold text-red-600">98%</span>
+            </div>
           </div>
 
           {/* Row 6 (65%) - Inner Tracks */}
           <div className="absolute top-[65%] left-[13%] w-40 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-600 pointer-events-none">
-             <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center">
-                   <Disc className="w-4 h-4 text-cyan-600" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Buffers</span>
-             </div>
-             <div className="grid grid-cols-4 gap-1">
-                {[1, 1, 1, 1, 1, 1, 0, 0].map((v, i) => (
-                   <div key={i} className={`h-1.5 rounded-full ${v ? 'bg-cyan-400' : 'bg-slate-200'}`} />
-                ))}
-             </div>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 bg-cyan-500/10 rounded-lg flex items-center justify-center">
+                <Disc className="w-4 h-4 text-cyan-600" />
+              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Buffers</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              {[1, 1, 1, 1, 1, 1, 0, 0].map((v, i) => (
+                <div key={i} className={`h-1.5 rounded-full ${v ? 'bg-cyan-400' : 'bg-slate-200'}`} />
+              ))}
+            </div>
           </div>
 
           <div className="absolute top-[65%] right-[13%] w-40 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-2xl p-2.5 shadow-sm hidden lg:block animate-in fade-in slide-in-from-right-12 duration-1000 delay-900 pointer-events-none">
@@ -273,44 +273,44 @@ export default function Home() {
 
           {/* Row 7 (77%) - Outer Tracks */}
           <div className="absolute top-[77%] left-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-2xl p-2.5 shadow-sm hidden lg:block animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-1500 pointer-events-none">
-             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-violet-500/10 rounded-lg flex items-center justify-center">
-                   <Activity className="w-4 h-4 text-violet-600" />
-                </div>
-                <div className="flex flex-col">
-                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Stream Throughput</span>
-                   <span className="text-[10px] font-bold text-slate-700">1.2 MB / sec</span>
-                </div>
-             </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-violet-500/10 rounded-lg flex items-center justify-center">
+                <Activity className="w-4 h-4 text-violet-600" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Stream Throughput</span>
+                <span className="text-[10px] font-bold text-slate-700">1.2 MB / sec</span>
+              </div>
+            </div>
           </div>
 
           {/* Row 8 (89%) - Outer Tracks Balanced */}
           <div className="absolute top-[87%] left-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-700 pointer-events-none">
-             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
-                   <User className="w-4 h-4 text-amber-600" />
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                <User className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RBAC Active</span>
+                <div className="flex gap-1 mt-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
                 </div>
-                <div className="flex flex-col">
-                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RBAC Active</span>
-                   <div className="flex gap-1 mt-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                   </div>
-                </div>
-             </div>
+              </div>
+            </div>
           </div>
 
           <div className="absolute top-[87%] right-[1%] w-44 bg-white/40 backdrop-blur-md border border-slate-200/50 rounded-xl p-2 shadow-sm hidden lg:block animate-in fade-in slide-in-from-right-12 duration-1000 delay-1000 pointer-events-none">
-             <div className="flex items-center gap-2 mb-2">
-                <Globe className="w-3.5 h-3.5 text-sky-500" />
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cloud Sync</span>
-             </div>
-             <div className="flex items-center justify-center gap-4">
-                <div className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-                <div className="h-px flex-1 bg-slate-200 dashed" />
-                <div className="w-2 h-2 rounded-full bg-slate-300" />
-             </div>
+            <div className="flex items-center gap-2 mb-2">
+              <Globe className="w-3.5 h-3.5 text-sky-500" />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cloud Sync</span>
+            </div>
+            <div className="flex items-center justify-center gap-4">
+              <div className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+              <div className="h-px flex-1 bg-slate-200 dashed" />
+              <div className="w-2 h-2 rounded-full bg-slate-300" />
+            </div>
           </div>
 
           {/* Subtle Grid Pattern Overlay */}
@@ -523,8 +523,8 @@ export default function Home() {
               <button
                 onClick={() => setShowRecent(r => !r)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-bold ${showRecent
-                    ? 'bg-sky-500 border-sky-500 text-white shadow-md shadow-sky-500/30'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 shadow-sm'
+                  ? 'bg-sky-500 border-sky-500 text-white shadow-md shadow-sky-500/30'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 shadow-sm'
                   }`}
                 title="Recent connections"
               >
