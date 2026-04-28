@@ -1,0 +1,23 @@
+services:
+  pulselog:
+    build: .
+    container_name: pulselog-viewer
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - ~/.pulselog_key:/root/.pulselog_key
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - SECURE_KEY_PATH=/root/.pulselog_key
+      # - JWT_SECRET=your_secret_here
+      # - ENCRYPTION_KEY=your_key_here
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

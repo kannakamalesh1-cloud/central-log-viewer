@@ -18,7 +18,7 @@ const os = require('os');
 
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = process.env.HOST || '0.0.0.0';
 const port = parseInt(process.env.PORT || '3000', 10);
 
 const app = next({ dev, hostname, port, webpack: true });
@@ -135,12 +135,12 @@ app.prepare().then(async () => {
 
     jwt.verify(cookies.token, JWT_SECRET, async (err, decoded) => {
       if (err) return next(new Error('Authentication error: Invalid token'));
-      
+
       // Check blacklist
       try {
         const blacklisted = await get('SELECT * FROM jwt_blacklist WHERE token = ?', [cookies.token]);
         if (blacklisted) return next(new Error('Authentication error: Session invalidated'));
-      } catch (e) {}
+      } catch (e) { }
 
       socket.user = decoded;
       next();
@@ -197,10 +197,10 @@ app.prepare().then(async () => {
         if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
 
         try {
-            await dbRun('INSERT INTO audit_logs (userEmail, serverId, serverName, logType, sourceId) VALUES (?, ?, ?, ?, ?)',
-               [socket.user.email, serverId, serverConfig.name, logType, sourceId]);
+          await dbRun('INSERT INTO audit_logs (userEmail, serverId, serverName, logType, sourceId) VALUES (?, ?, ?, ?, ?)',
+            [socket.user.email, serverId, serverConfig.name, logType, sourceId]);
         } catch (auditErr) {
-            console.error('Failed to write audit log', auditErr);
+          console.error('Failed to write audit log', auditErr);
         }
 
         if (activeSSH) activeSSH.disconnect();
@@ -228,7 +228,7 @@ app.prepare().then(async () => {
     try {
       const blacklisted = await get('SELECT * FROM jwt_blacklist WHERE token = ?', [token]);
       if (blacklisted) return res.json({ authenticated: false });
-    } catch (e) {}
+    } catch (e) { }
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
       if (err) return res.json({ authenticated: false });
@@ -239,7 +239,7 @@ app.prepare().then(async () => {
   server.post('/api/auth/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Invalid credentials' });
-    
+
     console.log(`[LOGIN ATTEMPT] User: "${email}"`);
     const user = await get('SELECT * FROM users WHERE email = ? COLLATE BINARY', [email]);
 
@@ -284,7 +284,7 @@ app.prepare().then(async () => {
   server.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
     const { email, password, role } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'User and password required' });
-    
+
     try {
       const hash = bcrypt.hashSync(password, 12);
       await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, role || 'viewer']);
@@ -298,7 +298,7 @@ app.prepare().then(async () => {
     const { id } = req.params;
     // Prevent deleting self
     if (parseInt(id) === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' });
-    
+
     await dbRun('DELETE FROM users WHERE id = ?', [id]);
     res.json({ success: true });
   });
@@ -387,49 +387,94 @@ app.prepare().then(async () => {
   // Next.js Catch-all
   server.use((req, res) => handle(req, res));
 
-    httpServer.listen(port, (err) => {
-      if (err) throw err;
-      console.log(`> Secure log viewer ready on http://${hostname}:${port}`);
+  httpServer.listen(port, (err) => {
+    if (err) throw err;
+    console.log(`> Secure log viewer ready on http://${hostname}:${port}`);
+  });
+
+  // Database Backup and Pruning Routine (Every 24 hours)
+  const backupDir = path.resolve(__dirname, 'data/backups');
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+  const runMaintenance = async () => {
+    // 1. Prune Old Audit Logs (older than 90 days)
+    try {
+      const result = await dbRun("DELETE FROM audit_logs WHERE timestamp < datetime('now', '-90 days')");
+      if (result.changes > 0) console.log(`> Maintenance: Pruned ${result.changes} old audit logs.`);
+    } catch (e) {
+      console.error('> Maintenance Error: Failed to prune audit logs', e);
+    }
+
+    // 2. Backup Database
+    const dbFile = path.resolve(__dirname, 'data/database.sqlite');
+    if (fs.existsSync(dbFile)) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupFile = path.join(backupDir, `database-${timestamp}.sqlite`);
+      fs.copyFileSync(dbFile, backupFile);
+      console.log(`> Maintenance: Database backup created at ${backupFile}`);
+
+      // 3. Prune Old Backups (older than 7 days)
+      const files = fs.readdirSync(backupDir);
+      const now = Date.now();
+      files.forEach(file => {
+        const filePath = path.join(backupDir, file);
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
+          fs.unlinkSync(filePath);
+        }
+      });
+    }
+  };
+
+  // Run once on startup, then every 24 hours
+  runMaintenance();
+  setInterval(runMaintenance, 24 * 60 * 60 * 1000);
+
+  // --- REAL-TIME DOCKER EVENT WATCHER ---
+  const { spawn: spawnChild } = require('child_process');
+  let dockerWatcher = null;
+
+  const startDockerWatcher = () => {
+    if (dockerWatcher) return;
+
+    console.log('> Initializing real-time Docker event watcher...');
+    dockerWatcher = spawnChild('docker', ['events', '--format', '{{json .}}', '--filter', 'type=container']);
+
+    dockerWatcher.stdout.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(Boolean);
+      lines.forEach(line => {
+        try {
+          const event = JSON.parse(line);
+          // Broadcast to all connected clients
+          io.emit('docker_event', {
+            action: event.Action,
+            id: event.id,
+            name: event.Actor?.Attributes?.name,
+            time: event.time
+          });
+        } catch (e) { }
+      });
     });
 
-    // Database Backup and Pruning Routine (Every 24 hours)
-    const backupDir = path.resolve(__dirname, 'data/backups');
-    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+    dockerWatcher.stderr.on('data', (data) => {
+      console.error(`[DOCKER WATCHER ERROR] ${data.toString()}`);
+    });
 
-    const runMaintenance = async () => {
-      // 1. Prune Old Audit Logs (older than 90 days)
-      try {
-        const result = await dbRun("DELETE FROM audit_logs WHERE timestamp < datetime('now', '-90 days')");
-        if (result.changes > 0) console.log(`> Maintenance: Pruned ${result.changes} old audit logs.`);
-      } catch (e) {
-        console.error('> Maintenance Error: Failed to prune audit logs', e);
-      }
+    dockerWatcher.on('close', (code) => {
+      console.log(`> Docker event watcher exited (code ${code}). Restarting in 5s...`);
+      dockerWatcher = null;
+      setTimeout(startDockerWatcher, 5000);
+    });
+  };
 
-      // 2. Backup Database
-      const dbFile = path.resolve(__dirname, 'data/database.sqlite');
-      if (fs.existsSync(dbFile)) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const backupFile = path.join(backupDir, `database-${timestamp}.sqlite`);
-        fs.copyFileSync(dbFile, backupFile);
-        console.log(`> Maintenance: Database backup created at ${backupFile}`);
-
-        // 3. Prune Old Backups (older than 7 days)
-        const files = fs.readdirSync(backupDir);
-        const now = Date.now();
-        files.forEach(file => {
-          const filePath = path.join(backupDir, file);
-          const stats = fs.statSync(filePath);
-          if (now - stats.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
-            fs.unlinkSync(filePath);
-          }
-        });
-      }
-    };
-
-    // Run once on startup, then every 24 hours
-    runMaintenance();
-    setInterval(runMaintenance, 24 * 60 * 60 * 1000);
-  }).catch((ex) => {
-    console.error(ex.stack);
-    process.exit(1);
+  // Check if docker is available before starting
+  const { exec: execCheck } = require('child_process');
+  execCheck('docker ps', (err) => {
+    if (!err) startDockerWatcher();
+    else console.warn('> Docker not found or permission denied. Real-time local events disabled.');
   });
+
+}).catch((ex) => {
+  console.error(ex.stack);
+  process.exit(1);
+});

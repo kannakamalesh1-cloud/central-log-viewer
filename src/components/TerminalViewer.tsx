@@ -203,6 +203,19 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
       else term.write(finalData);
     });
 
+    // AUTO-RECONNECT ON DOCKER START
+    socket.on('docker_event', (event: any) => {
+      if (event.action === 'start' && logType === 'docker' && sourceId) {
+        // Strip suffixes if present in sourceId
+        const cleanSourceId = sourceId.split('|')[0].split(':')[0];
+        if (event.name === cleanSourceId || event.id.startsWith(cleanSourceId)) {
+          term.writeln('\r\n\x1b[32m[SYSTEM] Container start detected. Re-hooking stream...\x1b[0m');
+          socket.emit('request_stream', { serverId, logType, sourceId, searchTerm: activeSearch, isRegex });
+          if (onStatusChange) onStatusChange('running');
+        }
+      }
+    });
+
     socket.on('disconnect', () => {
       term.writeln('\x1b[31m[OFFLINE]\x1b[0m Lost connection.');
       if (onStatusChange) onStatusChange('stopped');

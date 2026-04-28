@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Clock, Terminal as TerminalIcon } from 'lucide-react';
 
 interface ServerData {
@@ -158,6 +159,23 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
       setSelectedSource(null);
       setSelectedType(null);
     }
+  }, [selectedServerId]);
+
+  // Socket for real-time status updates
+  useEffect(() => {
+    const socket = io({ path: '/socket.io' });
+
+    socket.on('docker_event', (event: any) => {
+      // Only refresh if we have a server selected
+      if (selectedServerId) {
+        console.log('Real-time Docker event received:', event.action, event.name);
+        fetchSources();
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, [selectedServerId]);
 
   // Sync selectedSource with prop from parent
