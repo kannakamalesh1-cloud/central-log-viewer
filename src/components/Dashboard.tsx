@@ -78,7 +78,7 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
     const timeRangeMatch = searchInput.match(/([0-9]{1,2}:[0-9]{2}\s*(?:am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}:[0-9]{2}\s*(?:am|pm)?)/);
     if (timeRangeMatch) {
        searchInput = searchInput.replace(timeRangeMatch[0], '');
-       const parseTime = (timeStr) => {
+       const parseTime = (timeStr: string) => {
          let match = timeStr.trim().match(/([0-9]{1,2}):([0-9]{2})\s*(am|pm)?/);
          if (!match) return 0;
          let hours = parseInt(match[1]);
