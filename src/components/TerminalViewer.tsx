@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { io, Socket } from 'socket.io-client';
-import { Search, Pause, Play, Trash2, Download, Activity, X } from 'lucide-react';
+import { Search, Pause, Play, Trash2, Download, Activity, X, ExternalLink } from 'lucide-react';
 
 interface TerminalViewerProps {
   serverId: number | null;
@@ -286,6 +286,17 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
 
         <div className="flex-1" />
 
+        {/* Close Button (if slot system active) */}
+        {onClose && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200 transition-all group/close order-last ml-2"
+            title="Close slot"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+
         {/* Watch input */}
         <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10 transition-all flex-shrink-0 gap-1.5">
           <Activity className="w-3 h-3 text-sky-500 flex-shrink-0" />
@@ -357,6 +368,16 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                 : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
             }`}
           >◐</button>
+          <button
+            onClick={() => {
+              const url = `/popout?serverId=${serverId}&logType=${logType}&sourceId=${encodeURIComponent(sourceId || '')}`;
+              window.open(url, '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no');
+            }}
+            title="Pop-out to new window"
+            className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-all"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={downloadLogs}
             title="Download logs"

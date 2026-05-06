@@ -16,6 +16,13 @@ export default function Home() {
   const [error, setError] = useState("");
 
   const [view, setView] = useState<'dashboard' | 'terminal'>('dashboard');
+  
+  // Multi-slot system (Up to 4 slots)
+  const [slots, setSlots] = useState<{ serverId: number | null, logType: string | null, sourceId: string | null }[]>(
+    [null, null, null, null].map(() => ({ serverId: null, logType: null, sourceId: null }))
+  );
+  const [activeSlotIndex, setActiveSlotIndex] = useState(0);
+
   const [activeStream, setActiveStream] = useState({
     serverId: null as number | null,
     logType: null as string | null,
@@ -27,6 +34,19 @@ export default function Home() {
   const [heartbeatStatus, setHeartbeatStatus] = useState<'running' | 'dying' | 'stopped'>('stopped');
   const [recentSources, setRecentSources] = useState<{ sourceId: string; logType: string; serverId: number; serverName?: string }[]>([]);
   const [showRecent, setShowRecent] = useState(false);
+
+  // Update a specific slot
+  const updateSlot = (index: number, data: { serverId: number | null, logType: string | null, sourceId: string | null }) => {
+    setSlots(prev => {
+      const newSlots = [...prev];
+      newSlots[index] = data;
+      return newSlots;
+    });
+    if (data.sourceId) {
+       setActiveStream(data);
+       setView('terminal');
+    }
+  };
 
   // Helper to add/move source to recent list
   const addToRecent = (serverId: number, logType: string, sourceId: string, serverName: string) => {
@@ -93,6 +113,7 @@ export default function Home() {
     } catch (e) { }
     setIsLoggedIn(false);
     setUserRole("viewer");
+    setSlots([null, null, null, null].map(() => ({ serverId: null, logType: null, sourceId: null })));
     setActiveStream({ serverId: null, logType: null, sourceId: null });
     setHeartbeatStatus('stopped');
   };
@@ -424,9 +445,9 @@ export default function Home() {
         userRole={userRole}
         selectedServerId={selectedServerId}
         setSelectedServerId={setSelectedServerId}
-        activeSourceId={activeStream.sourceId}
+        activeSourceId={slots[activeSlotIndex]?.sourceId}
         onSelect={(serverId, logType, sourceId, serverName) => {
-          setActiveStream({ serverId, logType, sourceId });
+          updateSlot(activeSlotIndex, { serverId, logType, sourceId });
           setSelectedServerId(serverId); // Ensure server is selected in sidebar too
           setView('terminal');
           addToRecent(serverId, logType, sourceId, serverName);
@@ -518,6 +539,28 @@ export default function Home() {
 
           {/* Action Zone: Recent History + Log ID + Logout */}
           <div className="flex items-center gap-4">
+            {/* Slot Indicator */}
+            {view === 'terminal' && (
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-white border border-slate-200 rounded-xl shadow-sm">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Slots:</span>
+                {[0, 1, 2, 3].map(i => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveSlotIndex(i)}
+                    className={`w-5 h-5 rounded-lg text-[10px] font-black transition-all flex items-center justify-center border ${
+                      activeSlotIndex === i 
+                        ? 'bg-sky-500 border-sky-500 text-white shadow-md shadow-sky-500/20' 
+                        : slots[i].sourceId 
+                          ? 'bg-sky-100 border-sky-200 text-sky-600 hover:bg-sky-200' 
+                          : 'bg-slate-50 border-slate-200 text-slate-300 hover:border-sky-300'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Connection History */}
             <div className="relative">
               <button
@@ -593,11 +636,11 @@ export default function Home() {
               )}
             </div>
 
-            {activeStream.sourceId && (
+            {slots[activeSlotIndex]?.sourceId && (
               <div className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-2xl px-4 h-9 shadow-sm group/id transition-all hover:border-sky-300 hover:bg-sky-50">
                 <Disc className={`w-3.5 h-3.5 transition-all duration-500 ${heartbeatStatus === 'running' ? 'text-sky-500 animate-spin' : 'text-slate-300'}`} />
                 <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase group-hover/id:text-sky-700 transition-colors">
-                  {activeStream.sourceId.split('/').pop()?.toUpperCase()}
+                  {slots[activeSlotIndex].sourceId.split('/').pop()?.toUpperCase()}
                 </span>
               </div>
             )}
@@ -615,12 +658,31 @@ export default function Home() {
           {view === 'dashboard' ? (
             <div className="h-full overflow-auto p-4"><Dashboard onSelectServer={(id) => setSelectedServerId(id)} userRole={userRole} /></div>
           ) : (
-            <TerminalViewer
-              serverId={activeStream.serverId}
-              logType={activeStream.logType}
-              sourceId={activeStream.sourceId}
-              onStatusChange={setHeartbeatStatus}
-            />
+            <div className={`h-full w-full grid gap-3 ${
+              slots.filter(s => s.sourceId).length <= 1 ? 'grid-cols-1 grid-rows-1' :
+              slots.filter(s => s.sourceId).length === 2 ? 'grid-cols-2 grid-rows-1' :
+              'grid-cols-2 grid-rows-2'
+            }`}>
+              {slots.map((slot, index) => slot.sourceId && (
+                <TerminalViewer
+                  key={`${index}-${slot.serverId}-${slot.sourceId}`}
+                  serverId={slot.serverId}
+                  logType={slot.logType}
+                  sourceId={slot.sourceId}
+                  isActiveSlot={activeSlotIndex === index}
+                  onSlotClick={() => setActiveSlotIndex(index)}
+                  onClose={() => updateSlot(index, { serverId: null, logType: null, sourceId: null })}
+                  onStatusChange={activeSlotIndex === index ? setHeartbeatStatus : undefined}
+                />
+              ))}
+              {slots.filter(s => s.sourceId).length === 0 && (
+                 <div className="col-span-full row-span-full flex flex-col items-center justify-center text-slate-400 bg-white/20 backdrop-blur-sm rounded-[40px] border-2 border-dashed border-slate-200">
+                    <Activity className="w-12 h-12 mb-4 opacity-20" />
+                    <p className="text-sm font-bold uppercase tracking-widest">Select a log source to begin</p>
+                    <p className="text-[10px] mt-1 text-slate-400">Click any server in the sidebar to browse logs</p>
+                 </div>
+              )}
+            </div>
           )}
         </div>
       </main>

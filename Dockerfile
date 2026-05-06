@@ -1,20 +1,29 @@
 # Build Stage
-FROM node:20-slim AS builder
+FROM node:20 AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies for native modules
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 RUN npm install
 
 # Copy source
 COPY . .
 
+# Force rebuild native modules for the container environment
+RUN npm rebuild sqlite3 --build-from-source
+
 # Build Next.js app
 RUN npm run build
 
 # Production Stage
-FROM node:20-slim AS runner
+FROM node:20 AS runner
 
 WORKDIR /app
 
