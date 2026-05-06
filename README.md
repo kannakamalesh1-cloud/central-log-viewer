@@ -1,6 +1,6 @@
 # 🫀 PulseLog — Cinematic Infrastructure Log Monitoring
 
-![PulseLog Dashboard](./dashboard-screenshot.png)
+![PulseLog Split-View Dashboard](./public/split-view-dashboard.png)
 
 **PulseLog** is a high-performance, centralized log monitoring system designed for modern infrastructure. Built with a cinematic, high-tech aesthetic, it provides real-time streaming of system, container, and application logs via secure SSH tunnels.
 
@@ -12,11 +12,13 @@ Unlike traditional logging stacks that require complex agents and storage, Pulse
 
 - **🌐 Universal Discovery**: Automatically detects Docker containers, Kubernetes pods, Nginx, Apache, System logs, Security/Auth logs, and various Databases (MySQL, Postgres, Redis, MongoDB).
 - **💓 Pulse Telemetry**: Real-time "Heartbeat" (EKG) waveform indicating the live status and health of the log stream.
+- **🖥️ Multi-Log Matrix (Split View)**: Monitor up to 4 independent log streams simultaneously in a dynamic grid (1, 2, or 4 slots) that auto-adjusts its layout.
+- **🚀 Monitor Expansion (Pop-out)**: Move any terminal slot to a dedicated browser window for multi-monitor setups or vertical screen viewing.
 - **🛠️ Multi-Cloud & Hybrid**: Manage multiple servers (Production, Staging, Edge) from a single unified interface.
 - **🔍 Advanced Search & Watch**: 
   - Live server-side filtering with Regex support.
   - "Watch" keywords to highlight critical events in real-time.
-- **🕒 Connection History**: Intelligent history tracking of the last 5 viewed logs with server context for rapid switching.
+- **Anomaly Detection**: Error spike monitoring that alerts you if more than 3 errors occur in a 10-second window.
 - **🛡️ Hardened Security**:
   - **AES-256-GCM** encryption for SSH private keys at rest.
   - **Restricted Execution**: Uses a security wrapper (`log-wrapper.sh`) on target servers to limit SSH access to log viewing only.
@@ -95,11 +97,13 @@ The application will be available at `http://localhost:3000`.
 4. Use **Test Connection** to verify connectivity.
 
 ### Monitoring Logs
-1. Select a server from the dropdown.
+1. Select a server from the sidebar.
 2. PulseLog will automatically scan the server and categorize available logs.
-3. Click a log source (e.g., a Docker container or `/var/log/syslog`) to start the stream.
-4. Use the **Watch** input to highlight specific words (e.g., "ERROR" or "500").
-5. Toggle **Dim Mode** (◐) or adjust **Font Size** (A+/A-) for optimal viewing.
+3. Click a **Slot (1-4)** in the header to select where you want the log to appear.
+4. Click a log source in the sidebar to start the stream in that slot.
+5. Use the **Pop-out** icon (↗️) to move a terminal to another monitor.
+6. Use the **Watch** input to highlight specific words (e.g., "ERROR" or "500").
+7. Toggle **Dim Mode** (◐) or adjust **Font Size** (A+/A-) for optimal viewing.
 
 ---
 
