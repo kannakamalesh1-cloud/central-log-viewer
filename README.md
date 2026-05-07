@@ -1,6 +1,6 @@
 # 🫀 PulseLog — Cinematic Infrastructure Log Monitoring
 
-![PulseLog Split-View Dashboard](./public/split-view-dashboard.png)
+![PulseLog v2 Dashboard](./public/pulselog-v2-dashboard.png)
 
 **PulseLog** is a high-performance, centralized log monitoring system designed for modern infrastructure. Built with a cinematic, high-tech aesthetic, it provides real-time streaming of system, container, and application logs via secure SSH tunnels.
 
@@ -14,6 +14,10 @@ Unlike traditional logging stacks that require complex agents and storage, Pulse
 - **💓 Pulse Telemetry**: Real-time "Heartbeat" (EKG) waveform indicating the live status and health of the log stream.
 - **🖥️ Multi-Log Matrix (Split View)**: Monitor up to 4 independent log streams simultaneously in a dynamic grid (1, 2, or 4 slots) that auto-adjusts its layout.
 - **🚀 Monitor Expansion (Pop-out)**: Move any terminal slot to a dedicated browser window for multi-monitor setups or vertical screen viewing.
+- **📋 Security Audit Trail**: 
+  - Comprehensive logging of user access and log viewing activity.
+  - Advanced search with natural language time parsing (e.g., "yesterday at 5pm").
+  - CSV export functionality for compliance and security reviews.
 - **🛠️ Multi-Cloud & Hybrid**: Manage multiple servers (Production, Staging, Edge) from a single unified interface.
 - **🔍 Advanced Search & Watch**: 
   - Live server-side filtering with Regex support.
@@ -104,6 +108,12 @@ The application will be available at `http://localhost:3000`.
 5. Use the **Pop-out** icon (↗️) to move a terminal to another monitor.
 6. Use the **Watch** input to highlight specific words (e.g., "ERROR" or "500").
 7. Toggle **Dim Mode** (◐) or adjust **Font Size** (A+/A-) for optimal viewing.
+
+### Security Auditing
+1. Go to the **Dashboard Overview**.
+2. Scroll to the **Security Audit Trail** section.
+3. Use the search bar with natural language dates (e.g., "apr 20-22") to find specific access logs.
+4. Click **Export CSV** to download logs for compliance reporting.
 
 ---
 
