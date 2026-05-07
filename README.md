@@ -85,22 +85,31 @@ For each Linux server you want to monitor, PulseLog requires the `log-wrapper.sh
    ```
 
 ### 5. Windows Target Server Preparation
-To monitor a Windows machine, you must enable and configure the OpenSSH Server:
+To monitor a Windows machine, you must enable OpenSSH and (optionally) install the security wrapper:
 
 1.  **Open PowerShell as Administrator**.
-2.  **Install OpenSSH Server**:
+2.  **Install & Start SSH**:
     ```powershell
     Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
-    ```
-3.  **Open Firewall Port 22**:
-    ```powershell
     New-NetFirewallRule -Name sshd -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
-    ```
-4.  **Start & Automate SSH Service**:
-    ```powershell
     Start-Service sshd
     Set-Service -Name sshd -StartupType 'Automatic'
     ```
+3.  **Security Wrapper & Permissions**:
+    - **Enable Scripts**: Run `Set-ExecutionPolicy RemoteSigned -Force`.
+    - **Install Wrapper**: Copy `log-wrapper.ps1` from this repository to `C:\ProgramData\PulseLog\log-wrapper.ps1`.
+    - **Setup Key**: Paste your public key into `C:\Users\<username>\.ssh\authorized_keys`.
+    - **Fix Permissions**: Windows requires strict permissions. Run these in Admin PowerShell:
+      ```powershell
+      $user = "YOUR_WINDOWS_USERNAME"
+      icacls "C:\Users\$user\.ssh\authorized_keys" /inheritance:r
+      icacls "C:\Users\$user\.ssh\authorized_keys" /grant:r "${user}:F"
+      icacls "C:\Users\$user\.ssh\authorized_keys" /grant:r "SYSTEM:F"
+      ```
+    - **Restrict Key (Optional)**: Edit `authorized_keys` to force the wrapper:
+      ```ssh
+      command="powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\PulseLog\log-wrapper.ps1",no-port-forwarding ssh-rsa AAA...
+      ```
 
 ### 6. Start PulseLog
 ```bash
