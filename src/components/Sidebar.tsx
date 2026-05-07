@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Clock, Terminal as TerminalIcon } from 'lucide-react';
+import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon } from 'lucide-react';
 
 interface ServerData {
   id: number;
@@ -1162,6 +1162,72 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
                       <p className="text-[10px] text-slate-400 leading-normal">
                         Use the <span className="text-slate-900">+</span> button to add the server. PulseLog will now securely tunnel through SSH to execute the wrapper.
                       </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+                    <Monitor className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Windows Node Setup</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-4">
+                  To monitor a Windows server, follow these PowerShell steps as Administrator:
+                </p>
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-indigo-400">01</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-2">Install & Start SSH</p>
+                      <div className="space-y-2">
+                        <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+                        </code>
+                        <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                          Start-Service sshd; Set-Service -Name sshd -StartupType 'Automatic'
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-indigo-400">02</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-2">Configure Firewall</p>
+                      <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                        New-NetFirewallRule -Name sshd -DisplayName 'SSH' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
+                      </code>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-300 flex items-center justify-center shrink-0 text-[10px] font-black text-indigo-400">03</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-1">Fix Permissions</p>
+                      <p className="text-[10px] text-slate-400 leading-normal mb-3">
+                        Run these 3 commands to secure your <code className="text-zinc-500 font-bold">authorized_keys</code>:
+                      </p>
+                      <div className="space-y-3">
+                        <div>
+                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">A. Enable Scripts</p>
+                           <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                             Set-ExecutionPolicy RemoteSigned -Force
+                           </code>
+                        </div>
+                        <div>
+                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">B. Restrict Key</p>
+                           <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                             icacls "C:\Users\username\.ssh\authorized_keys" /inheritance:r
+                           </code>
+                        </div>
+                        <div>
+                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">C. Grant Access</p>
+                           <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                             icacls "C:\Users\username\.ssh\authorized_keys" /grant:r "username:F"
+                           </code>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
