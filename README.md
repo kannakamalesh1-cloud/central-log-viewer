@@ -75,8 +75,8 @@ To fully secure your instance:
    ```
    PulseLog will automatically detect this file.
 
-### 4. Target Server Preparation
-For each server you want to monitor, PulseLog requires the `log-wrapper.sh` script to be present:
+### 4. Linux Target Server Preparation
+For each Linux server you want to monitor, PulseLog requires the `log-wrapper.sh` script to be present:
 1. Copy `log-wrapper.sh` to the home directory of the SSH user on the target server.
 2. Make it executable: `chmod +x ~/log-wrapper.sh`.
 3. (Optional but Recommended) Restrict the SSH key in `~/.ssh/authorized_keys`:
@@ -84,7 +84,25 @@ For each server you want to monitor, PulseLog requires the `log-wrapper.sh` scri
    command="./log-wrapper.sh",no-port-forwarding,no-X11-forwarding ssh-rsa AAA...
    ```
 
-### 5. Start PulseLog
+### 5. Windows Target Server Preparation
+To monitor a Windows machine, you must enable and configure the OpenSSH Server:
+
+1.  **Open PowerShell as Administrator**.
+2.  **Install OpenSSH Server**:
+    ```powershell
+    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+    ```
+3.  **Open Firewall Port 22**:
+    ```powershell
+    New-NetFirewallRule -Name sshd -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
+    ```
+4.  **Start & Automate SSH Service**:
+    ```powershell
+    Start-Service sshd
+    Set-Service -Name sshd -StartupType 'Automatic'
+    ```
+
+### 6. Start PulseLog
 ```bash
 npm run dev
 ```
