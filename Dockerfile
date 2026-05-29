@@ -1,53 +1,59 @@
-# Build Stage
-FROM node:20 AS builder
-
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
-# Install build dependencies for native modules
+COPY package*.json ./
+
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
-    && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
-RUN npm install
+RUN npm install --build-from-source
 
-# Copy source
 COPY . .
 
-# Force rebuild native modules for the container environment
-RUN npm rebuild sqlite3 --build-from-source
-
-# Build Next.js app
 RUN npm run build
 
-# Production Stage
-FROM node:20 AS runner
 
+# Production Stage
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-# Install Docker CLI to support the real-time event watcher
-RUN apt-get update && apt-get install -y docker.io && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    docker.io \
+    python3 \
+    make \
+    g++ \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy built assets and production dependencies
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
+COPY package*.json ./
+
+RUN npm install --omit=dev --build-from-source
+
+# Copy Next.js build output
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/server.js ./
-COPY --from=builder /app/src/lib ./src/lib
-COPY --from=builder /app/data ./data
-COPY --from=builder /app/log-wrapper.sh ./
 
-# Create data directory if it doesn't exist
+# IMPORTANT FIX: ensure Next runtime works with custom server
+COPY --from=builder /app/server.js ./
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/data ./data
+COPY --from=builder /app/log-wrapper.* ./
+
+# Ensure Next.js required runtime files exist
+COPY --from=builder /app/next.config.* ./
+
 RUN mkdir -p data/backups
 
 EXPOSE 3000
 
-# Start the application
+# FIX: ensure environment uses production Next.js correctly
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# IMPORTANT: keep your server.js (no structural change)
 CMD ["node", "server.js"]

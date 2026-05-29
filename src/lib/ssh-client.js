@@ -126,26 +126,83 @@ class SSHController {
     return new Promise((resolve, reject) => {
       const conn = new Client();
       conn.on('ready', () => {
-        conn.exec(cmd, (err, stream) => {
-          if (err) {
-            conn.end();
-            return reject(err);
-          }
-          let output = '';
-          stream.on('data', (data) => output += data.toString());
-          stream.on('close', () => {
-             conn.end();
-             const list = output.split('\n')
-                .map(s => s.trim())
-                .filter(Boolean)
-                .map(s => {
-                    const [type, ...rest] = s.split(':');
-                    const [identifier, status] = rest.join(':').split('|');
-                    return { type, identifier, status: status || null };
+        // Proactively check and upload log-wrapper.sh if missing on the remote server
+        conn.exec('ls ./log-wrapper.sh', (err, stream) => {
+          let hasWrapper = false;
+          if (!err && stream) {
+            stream.on('data', () => hasWrapper = true);
+            stream.on('close', () => {
+              if (!hasWrapper) {
+                conn.sftp((sftpErr, sftp) => {
+                  if (sftpErr) return executeDiscovery();
+                  const localWrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
+                  sftp.fastPut(localWrapperPath, './log-wrapper.sh', {}, (putErr) => {
+                    if (putErr) return executeDiscovery();
+                    conn.exec('chmod +x ./log-wrapper.sh', (chmodErr, chmodStream) => {
+                      if (chmodErr) return executeDiscovery();
+                      chmodStream.on('close', () => {
+                        executeDiscovery();
+                      });
+                    });
+                  });
                 });
-             resolve(list);
-          });
+              } else {
+                executeDiscovery();
+              }
+            });
+          } else {
+            executeDiscovery();
+          }
         });
+
+        function executeDiscovery() {
+          conn.exec(cmd, (err, stream) => {
+            if (err) {
+              conn.end();
+              return reject(err);
+            }
+            let output = '';
+            stream.on('data', (data) => output += data.toString());
+            stream.on('close', () => {
+               const list = output.split('\n')
+                  .map(s => s.trim())
+                  .filter(Boolean)
+                  .map(s => {
+                      const [type, ...rest] = s.split(':');
+                      const [identifier, status] = rest.join(':').split('|');
+                      return { type, identifier, status: status || null };
+                  });
+
+               // Fallback if no sources were discovered (e.g. unrestricted shell where discover-sources command is not found)
+               if (list.length === 0) {
+                  const fallbackCmd = `SSH_ORIGINAL_COMMAND="${cmd}" ./log-wrapper.sh ${cmd}`;
+                  conn.exec(fallbackCmd, (err2, stream2) => {
+                     if (err2) {
+                        conn.end();
+                        return resolve([]);
+                     }
+                     let output2 = '';
+                     stream2.on('data', (data) => output2 += data.toString());
+                     stream2.on('close', () => {
+                        conn.end();
+                        const list2 = output2.split('\n')
+                           .map(s => s.trim())
+                           .filter(Boolean)
+                           .map(s => {
+                               const [type, ...rest] = s.split(':');
+                               const [identifier, status] = rest.join(':').split('|');
+                               return { type, identifier, status: status || null };
+                           });
+                        resolve(list2);
+                     });
+                  });
+               } else {
+                  conn.end();
+                  resolve(list);
+               }
+            });
+          });
+        }
       }).on('error', (err) => reject(err));
       
       conn.connect({

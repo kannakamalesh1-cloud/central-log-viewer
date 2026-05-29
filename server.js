@@ -21,7 +21,7 @@ const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOST || '0.0.0.0';
 const port = parseInt(process.env.PORT || '3000', 10);
 
-const app = next({ dev, hostname, port, webpack: true });
+const app = next({ dev });
 const handle = app.getRequestHandler();
 
 // Security Configuration
@@ -108,18 +108,9 @@ app.prepare().then(async () => {
 
   const server = express();
 
-  // Enhanced security headers
+  // Enhanced security headers - Relax CSP for Next.js + Socket.IO
   server.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Required for Next.js dev/hydration
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "blob:"],
-        connectSrc: ["'self'", "ws:", "wss:"], // Required for Socket.io
-      },
-    },
+    contentSecurityPolicy: false
   }));
   server.use(express.json());
   server.use(cookieParser());
@@ -246,7 +237,7 @@ app.prepare().then(async () => {
     if (user && bcrypt.compareSync(password, user.passwordHash)) {
       console.log(`[LOGIN SUCCESS] User: "${email}" (Stored: "${user.email}")`);
       const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '12h' });
-      res.cookie('token', token, { httpOnly: true, secure: !dev, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
+      res.cookie('token', token, { httpOnly: true, secure: false, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
       res.json({ success: true, email: user.email, role: user.role });
     } else {
       console.log(`[LOGIN FAILED] User: "${email}" - ${user ? 'Incorrect Password' : 'User Not Found'}`);
@@ -387,7 +378,7 @@ app.prepare().then(async () => {
   // Next.js Catch-all
   server.use((req, res) => handle(req, res));
 
-  httpServer.listen(port, (err) => {
+  httpServer.listen(port, hostname, (err) => {
     if (err) throw err;
     console.log(`> Secure log viewer ready on http://${hostname}:${port}`);
   });
