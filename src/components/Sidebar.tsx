@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
-import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon } from 'lucide-react';
+import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon, Zap, Copy, Check } from 'lucide-react';
 
 interface ServerData {
   id: number;
@@ -40,6 +41,7 @@ interface SidebarProps {
 const defaultForm = { name: '', host: '', port: '22', username: '', privateKey: '' };
 
 export default function Sidebar({ userRole, currentUserEmail, selectedServerId, setSelectedServerId, activeSourceId, onSelect, onShowDashboard }: SidebarProps) {
+  const router = useRouter();
   const [servers, setServers] = useState<ServerData[]>([]);
   const [logSources, setLogSources] = useState<LogSource[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
@@ -79,7 +81,16 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
   const [userSaving, setUserSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
+  // Quick Setup / Master Key states
+  const [activeTab, setActiveTab] = useState<'quick' | 'manual'>('quick');
+  const [setupToken, setSetupToken] = useState('');
+  const [copied, setCopied] = useState(false);
+
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
+
+  // Keep a stable ref to selectedServerId so the socket effect never needs to re-run
+  const selectedServerIdRef = useRef<number | null>(selectedServerId);
+  useEffect(() => { selectedServerIdRef.current = selectedServerId; }, [selectedServerId]);
 
   // Drag to scroll state
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -142,11 +153,27 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
     }
   }, [showUserPanel, userRole]);
 
-  const fetchSources = () => {
-    if (!selectedServerId) { setLogSources([]); setSourceError(null); return; }
+  useEffect(() => {
+    if (showAddPanel && userRole === 'admin' && !editingId) {
+      fetch('/api/setup/token')
+        .then(res => res.json())
+        .then(data => {
+          if (data.token) setSetupToken(data.token);
+        })
+        .catch(err => console.error('Failed to fetch setup token:', err));
+    } else if (!showAddPanel) {
+      setSetupToken('');
+      setCopied(false);
+    }
+  }, [showAddPanel, userRole, editingId]);
+
+  // useCallback with no deps: reads serverId from ref so the socket's stable closure always gets the latest value
+  const fetchSources = useCallback(() => {
+    const serverId = selectedServerIdRef.current;
+    if (!serverId) { setLogSources([]); setSourceError(null); return; }
     setLoadingSources(true);
     setSourceError(null);
-    fetch(`/api/servers/${selectedServerId}/sources`)
+    fetch(`/api/servers/${serverId}/sources`)
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -161,7 +188,8 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
         setSourceError('Network error connecting to discovery API');
       })
       .finally(() => setLoadingSources(false));
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Stable reference — reads server from ref, not closure
 
   useEffect(() => {
     fetchSources();
@@ -171,13 +199,13 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
     }
   }, [selectedServerId]);
 
-  // Socket for real-time status updates
+  // Socket for real-time status updates — created ONCE, uses ref so it never reconnects on server change
   useEffect(() => {
     const socket = io({ path: '/socket.io' });
 
     socket.on('docker_event', (event: any) => {
-      // Only refresh if we have a server selected
-      if (selectedServerId) {
+      // Read the latest serverId via ref — no stale closure, no socket reconnect needed
+      if (selectedServerIdRef.current) {
         console.log('Real-time Docker event received:', event.action, event.name);
         fetchSources();
       }
@@ -186,7 +214,8 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
     return () => {
       socket.disconnect();
     };
-  }, [selectedServerId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps: socket is intentionally created only once
 
   // Sync selectedSource with prop from parent
   useEffect(() => {
@@ -442,9 +471,9 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
             {userRole === 'admin' && (
               <>
                 <button
-                  onClick={openUserPanel}
+                  onClick={() => router.push('/users')}
                   className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all flex items-center justify-center"
-                  title="User Management"
+                  title="User Permissions"
                 >
                   <KeyRound className="w-4 h-4" />
                 </button>
@@ -869,133 +898,228 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleAddServer} className="flex flex-col gap-4 p-6 overflow-y-auto flex-1">
-
-          {/* Server Name */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Server Name</label>
-            <input
-              name="name"
-              value={form.name}
-              onChange={handleFormChange}
-              placeholder="e.g. Production Web"
-              className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 shadow-sm"
-            />
+        {/* Tab Switcher - only for new server */}
+        {!editingId && (
+          <div className="flex px-6 pt-4 gap-2 bg-slate-50 border-b border-slate-200/50 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('quick')}
+              className={`flex-1 pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 text-center ${activeTab === 'quick' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+            >
+              ⚡ Quick Setup
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('manual')}
+              className={`flex-1 pb-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 text-center ${activeTab === 'manual' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+            >
+              Manual Config
+            </button>
           </div>
+        )}
 
-          {/* Host */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">IP Address / Hostname</label>
-            <input
-              name="host"
-              value={form.host}
-              onChange={handleFormChange}
-              placeholder="e.g. 192.168.1.100 or server.com"
-              className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
-            />
-          </div>
-
-          {/* Port + Username row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">SSH Port</label>
-              <input
-                name="port"
-                value={form.port}
-                onChange={handleFormChange}
-                placeholder="22"
-                type="number"
-                min="1"
-                max="65535"
-                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
-              />
+        {!editingId && activeTab === 'quick' ? (
+          <div className="flex flex-col gap-5 p-6 overflow-y-auto flex-1">
+            <div className="bg-sky-500/10 border border-sky-500/20 rounded-[20px] p-4 flex flex-col gap-2">
+              <span className="text-xs font-bold text-sky-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-sky-600 animate-pulse" /> Zero-Touch Installation
+              </span>
+              <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
+                Run this single secure command on your remote server. The script will automatically deploy the security wrapper, configure restricted SSH access, and register the node back to this dashboard.
+              </p>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">SSH User</label>
-              <input
-                name="username"
-                value={form.username}
-                onChange={handleFormChange}
-                placeholder="ubuntu"
-                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
-              />
-            </div>
-          </div>
 
-          {/* Private Key */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <KeyRound className="w-3 h-3" /> Private Key
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowKey(v => !v)}
-                className="text-xs text-slate-400 hover:text-sky-600 flex items-center gap-1 transition-colors"
-              >
-                {showKey ? <><EyeOff className="w-3 h-3" /> Hide</> : <><Eye className="w-3 h-3" /> Show</>}
-              </button>
-            </div>
-            <textarea
-              name="privateKey"
-              value={form.privateKey}
-              onChange={handleFormChange}
-              placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
-              rows={6}
-              className={`w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono resize-none leading-relaxed shadow-sm ${!showKey ? 'text-security-disc' : ''}`}
-              style={!showKey ? { WebkitTextSecurity: 'disc' } as React.CSSProperties : {}}
-            />
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              Paste the contents of your <span className="text-slate-500 font-mono">~/.ssh/id_ed25519</span> private key. It will be AES-256 encrypted before storage.
-            </p>
-          </div>
-
-          {/* Status Messages */}
-          {saveStatus === 'error' && (
-            <div className="flex items-center gap-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{saveError}</span>
-            </div>
-          )}
-          {saveStatus === 'success' && (
-            <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/10 border border-green-500/20 rounded-xl px-3 py-2.5">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              <span>Server {editingId ? 'updated' : 'added'} successfully!</span>
-            </div>
-          )}
-
-          {/* Test Button */}
-          <button
-            type="button"
-            onClick={handleTestConnection}
-            disabled={testing || saving}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-300 transition-all text-xs font-bold disabled:opacity-50 shadow-sm"
-          >
-            {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
-            Test Connection
-          </button>
-
-          {testResult && (
-            <div className={`text-[10px] px-3 py-2 rounded-lg border flex flex-col gap-1 ${testResult.success ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
-              <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
-                {testResult.success ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                {testResult.success ? 'Test Successful' : 'Test Failed'}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Run this command on your remote server:</label>
+              <div className="relative bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] break-all leading-normal border border-slate-800 shadow-inner select-all">
+                {setupToken ? (
+                  `curl -fsSL -k "https://${typeof window !== 'undefined' ? window.location.host : ''}/api/setup-node?token=${setupToken}" | bash`
+                ) : (
+                  <span className="text-slate-500 animate-pulse">Generating secure registration command...</span>
+                )}
               </div>
-              {!testResult.success && <span className="font-mono opacity-80 break-words">{testResult.error}</span>}
             </div>
-          )}
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={saving}
-            className="mt-2 w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-black uppercase tracking-widest py-3.5 rounded-xl shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            {editingId ? 'Update Server' : 'Save Server'}
-          </button>
-        </form>
+            <button
+              type="button"
+              disabled={!setupToken}
+              onClick={() => {
+                const appHost = typeof window !== 'undefined' ? window.location.host : '';
+                const cmd = `curl -fsSL -k "https://${appHost}/api/setup-node?token=${setupToken}" | bash`;
+                navigator.clipboard.writeText(cmd);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className={`w-full py-3.5 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg ${copied ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-sky-600 hover:bg-sky-500 text-white shadow-sky-500/20'} disabled:opacity-50 flex items-center justify-center gap-2`}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" /> Copied successfully!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" /> Copy Command
+                </>
+              )}
+            </button>
+
+            <div className="border-t border-slate-200/60 my-2" />
+
+            <div className="flex flex-col gap-4">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Setup Steps Details</span>
+              
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <div className="w-5 h-5 rounded-full bg-slate-200/60 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">1</div>
+                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                    Log into your remote server as a user with <code className="text-slate-700 bg-slate-200/60 px-1 py-0.5 rounded font-mono text-[10px]">sudo</code> access.
+                  </p>
+                </div>
+                
+                <div className="flex gap-3">
+                  <div className="w-5 h-5 rounded-full bg-slate-200/60 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">2</div>
+                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                    Paste the copied command and press <kbd className="text-slate-700 bg-slate-200/60 px-1.5 py-0.5 rounded font-mono shadow-sm text-[10px]">Enter</kbd>.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="w-5 h-5 rounded-full bg-slate-200/60 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">3</div>
+                  <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                    Watch the terminal. Once completed, the server will instantly show up in the left-hand sidebar as <span className="text-emerald-500 font-bold">Online</span>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleAddServer} className="flex flex-col gap-4 p-6 overflow-y-auto flex-1">
+
+            {/* Server Name */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Server Name</label>
+              <input
+                name="name"
+                value={form.name}
+                onChange={handleFormChange}
+                placeholder="e.g. Production Web"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 shadow-sm"
+              />
+            </div>
+
+            {/* Host */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">IP Address / Hostname</label>
+              <input
+                name="host"
+                value={form.host}
+                onChange={handleFormChange}
+                placeholder="e.g. 192.168.1.100 or server.com"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
+              />
+            </div>
+
+            {/* Port + Username row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">SSH Port</label>
+                <input
+                  name="port"
+                  value={form.port}
+                  onChange={handleFormChange}
+                  placeholder="22"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">SSH User</label>
+                <input
+                  name="username"
+                  value={form.username}
+                  onChange={handleFormChange}
+                  placeholder="ubuntu"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
+                />
+              </div>
+            </div>
+
+            {/* Private Key */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <KeyRound className="w-3 h-3" /> Private Key
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowKey(v => !v)}
+                  className="text-xs text-slate-400 hover:text-sky-600 flex items-center gap-1 transition-colors"
+                >
+                  {showKey ? <><EyeOff className="w-3 h-3" /> Hide</> : <><Eye className="w-3 h-3" /> Show</>}
+                </button>
+              </div>
+              <textarea
+                name="privateKey"
+                value={form.privateKey}
+                onChange={handleFormChange}
+                placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                rows={6}
+                className={`w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono resize-none leading-relaxed shadow-sm ${!showKey ? 'text-security-disc' : ''}`}
+                style={!showKey ? { WebkitTextSecurity: 'disc' } as React.CSSProperties : {}}
+              />
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                Paste the contents of your <span className="text-slate-500 font-mono">~/.ssh/id_ed25519</span> private key. It will be AES-256 encrypted before storage.
+              </p>
+            </div>
+
+            {/* Status Messages */}
+            {saveStatus === 'error' && (
+              <div className="flex items-center gap-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{saveError}</span>
+              </div>
+            )}
+            {saveStatus === 'success' && (
+              <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/10 border border-green-500/20 rounded-xl px-3 py-2.5">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>Server {editingId ? 'updated' : 'added'} successfully!</span>
+              </div>
+            )}
+
+            {/* Test Button */}
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={testing || saving}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-sky-50 hover:text-sky-600 hover:border-sky-300 transition-all text-xs font-bold disabled:opacity-50 shadow-sm"
+            >
+              {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+              Test Connection
+            </button>
+
+            {testResult && (
+              <div className={`text-[10px] px-3 py-2 rounded-lg border flex flex-col gap-1 ${testResult.success ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
+                  {testResult.success ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {testResult.success ? 'Test Successful' : 'Test Failed'}
+                </div>
+                {!testResult.success && <span className="font-mono opacity-80 break-words">{testResult.error}</span>}
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={saving}
+              className="mt-2 w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-black uppercase tracking-widest py-3.5 rounded-xl shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {editingId ? 'Update Server' : 'Save Server'}
+            </button>
+          </form>
+        )}
       </div>
 
       {/* User Management Panel */}

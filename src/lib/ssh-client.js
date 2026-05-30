@@ -209,7 +209,10 @@ class SSHController {
         host: serverConfig.host,
         port: serverConfig.port,
         username: serverConfig.username,
-        privateKey: privateKey
+        privateKey: privateKey,
+        readyTimeout: 10000,      // Fix #1: fail fast after 10s instead of hanging
+        keepaliveInterval: 5000,  // Send keepalives every 5s during discovery
+        keepaliveCountMax: 2      // Disconnect after 2 missed keepalives
       });
     });
   }
@@ -252,7 +255,7 @@ class SSHController {
     this.conn.on('ready', () => {
        if (this.socket) this.socket.emit('terminal:data', '\r\n\x1b[32m[SYSTEM] Securely connected via SSH...\x1b[0m\r\n');
        
-       this.conn.exec(`./log-wrapper.sh ${commandStr}`, { pty: true }, (err, stream) => {
+       this.conn.exec(`./log-wrapper.sh ${commandStr}`, (err, stream) => {
           if (err) {
             if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] Exec failed: ${err.message}\x1b[0m\r\n`);
             this.disconnect();
@@ -287,8 +290,9 @@ class SSHController {
         port: serverConfig.port,
         username: serverConfig.username,
         privateKey: privateKey,
-        keepaliveInterval: 10000, // 10 seconds
-        readyTimeout: 20000
+        readyTimeout: 15000,      // 15s to establish stream connection
+        keepaliveInterval: 10000, // Send keepalive every 10s
+        keepaliveCountMax: 3      // Fix #4: disconnect cleanly after 3 missed keepalives (~30s)
       });
     } catch (e) {
       if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] Invalid target server config.\x1b[0m\r\n`);

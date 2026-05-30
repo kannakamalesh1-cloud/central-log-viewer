@@ -67,6 +67,30 @@ function decrypt(text) {
   return decrypted;
 }
 
+/**
+ * Reads ADMIN_EMAILS directly from the .env file on disk every time it is called.
+ * This allows changes to .env to take effect without restarting the server.
+ */
+function readAdminEmailsFromDisk() {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    const raw = fs.readFileSync(envPath, 'utf8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('ADMIN_EMAILS=')) {
+        const value = trimmed.slice('ADMIN_EMAILS='.length).trim();
+        return value
+          .split(',')
+          .map(e => e.trim().toLowerCase())
+          .filter(Boolean);
+      }
+    }
+  } catch (e) {
+    console.error('[ADMIN_EMAILS] Failed to read .env from disk:', e.message);
+  }
+  return [];
+}
+
 // Middlewares
 const authenticateToken = async (req, res, next) => {
   const token = req.cookies.token;
@@ -95,6 +119,31 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
+const { execSync } = require('child_process');
+const KEY_DIR = path.join(__dirname, 'data', 'keys');
+const PRIVATE_KEY_PATH = path.join(KEY_DIR, 'master_id_ed25519');
+const PUBLIC_KEY_PATH = path.join(KEY_DIR, 'master_id_ed25519.pub');
+
+function ensureMasterKeyPair() {
+  if (!fs.existsSync(KEY_DIR)) {
+    fs.mkdirSync(KEY_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(PRIVATE_KEY_PATH)) {
+    console.log('> Master SSH Key not found. Generating a secure Ed25519 pair...');
+    try {
+      execSync(`ssh-keygen -t ed25519 -N "" -f "${PRIVATE_KEY_PATH}"`, { stdio: 'pipe' });
+      console.log('> Master Ed25519 SSH Key Pair generated successfully.');
+    } catch (e) {
+      console.error('> Failed to generate Ed25519 Master Key via ssh-keygen:', e.message);
+      try {
+        execSync(`ssh-keygen -t rsa -b 4096 -N "" -f "${PRIVATE_KEY_PATH}"`, { stdio: 'pipe' });
+        console.log('> Master RSA SSH Key Pair generated successfully.');
+      } catch (rsaErr) {
+        console.error('> Critical: Failed to generate Master SSH Key pair:', rsaErr.message);
+      }
+    }
+  }
+}
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -105,6 +154,7 @@ const loginLimiter = rateLimit({
 app.prepare().then(async () => {
   await initDB();
   console.log('> SQLite database initialized');
+  ensureMasterKeyPair();
 
   const server = express();
 
@@ -301,23 +351,50 @@ app.prepare().then(async () => {
         return res.redirect(`/?error=email_not_found`);
       }
 
-      // Verify the user email exists in SQLite database
-      const user = await get('SELECT * FROM users WHERE email = ? COLLATE BINARY', [email]);
+      // Read ADMIN_EMAILS live from .env on disk (no restart needed after edits)
+      const adminEmails = readAdminEmailsFromDisk();
+      const isAdminEmail = adminEmails.includes(email.toLowerCase());
+
+      // Check if user already exists in the DB
+      let user = await get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', [email]);
+
+      if (isAdminEmail) {
+        // Auto-provision or promote to admin if email is in ADMIN_EMAILS
+        if (!user) {
+          // New admin user — insert into DB with a random unusable password (SSO only)
+          const hash = require('bcrypt').hashSync(require('crypto').randomBytes(32).toString('hex'), 10);
+          const result = await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, 'admin']);
+          user = { id: result.id, email, role: 'admin' };
+          console.log(`[MICROSOFT ADMIN AUTO-PROVISIONED] "${email}" added as admin.`);
+        } else if (user.role !== 'admin') {
+          // Existing user — elevate to admin
+          await dbRun('UPDATE users SET role = ? WHERE id = ?', ['admin', user.id]);
+          user = { ...user, role: 'admin' };
+          console.log(`[MICROSOFT ADMIN PROMOTED] "${email}" elevated to admin.`);
+        }
+      } else {
+        // If not in ADMIN_EMAILS anymore, but they exist as admin in DB, they were removed from the env whitelist!
+        if (user && user.role === 'admin') {
+          await dbRun('DELETE FROM users WHERE id = ?', [user.id]);
+          user = null;
+          console.log(`[MICROSOFT LOGIN BLOCKED] "${email}" removed from DB and blocked because they are no longer in ADMIN_EMAILS.`);
+        }
+      }
 
       if (user) {
         console.log(`[MICROSOFT LOGIN SUCCESS] User: "${email}" (Role: "${user.role}")`);
         const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '12h' });
-        
-        res.cookie('token', token, { 
-          httpOnly: true, 
+
+        res.cookie('token', token, {
+          httpOnly: true,
           secure: false, // Set to true if running under standard public HTTPS certs
-          sameSite: 'strict', 
-          maxAge: 12 * 60 * 60 * 1000 
+          sameSite: 'strict',
+          maxAge: 12 * 60 * 60 * 1000
         });
 
         res.redirect('/');
       } else {
-        console.warn(`[MICROSOFT LOGIN BLOCKED] Non-whitelisted corporate email attempted login: "${email}"`);
+        console.warn(`[MICROSOFT LOGIN BLOCKED] Non-whitelisted email attempted login: "${email}"`);
         res.redirect(`/?error=unauthorized_email&email=${encodeURIComponent(email)}`);
       }
     } catch (err) {
@@ -419,6 +496,24 @@ app.prepare().then(async () => {
     res.json({ success: true });
   });
 
+  server.put('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { role } = req.body;
+    if (!role || !['admin', 'viewer'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be admin or viewer.' });
+    }
+    // Prevent demoting yourself
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot change your own role' });
+    }
+    try {
+      await dbRun('UPDATE users SET role = ? WHERE id = ?', [role, id]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update role' });
+    }
+  });
+
 
 
   server.get('/api/servers', authenticateToken, async (req, res) => {
@@ -437,22 +532,50 @@ app.prepare().then(async () => {
     }
   });
 
+
+  // Fix #2: Deduplicate concurrent SSH discovery calls for the same server.
+  // If fetchSources() is called rapidly (e.g. from docker_event), only ONE SSH
+  // connection is opened — all callers await the same promise.
+  const pendingDiscovery = new Map();
+
   server.get('/api/servers/:id/sources', authenticateToken, async (req, res) => {
+    const serverId = req.params.id;
+    const type = req.query.type || '';
+    const cacheKey = `${serverId}:${type}`;
+
+    // If a discovery is already in-flight for this server, reuse it
+    if (pendingDiscovery.has(cacheKey)) {
+      try {
+        const sources = await pendingDiscovery.get(cacheKey);
+        return res.json(sources);
+      } catch (e) {
+        return res.status(500).json({ error: e.message || 'Failed to discover log sources' });
+      }
+    }
+
     try {
-      const type = req.query.type || '';
-      const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [req.params.id]);
+      const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
       if (!serverConfig) return res.status(404).json({ error: 'Not found' });
 
       if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
 
       const ssh = new SSHController(null);
-      const sources = await ssh.discoverLogSources(serverConfig, type);
+      const promise = ssh.discoverLogSources(serverConfig, type);
+
+      // Register the in-flight promise so parallel requests share it
+      pendingDiscovery.set(cacheKey, promise);
+
+      const sources = await promise;
       res.json(sources);
     } catch (e) {
-      console.error(`[DISCOVERY ERROR] Server ID ${req.params.id}:`, e.message);
+      console.error(`[DISCOVERY ERROR] Server ID ${serverId}:`, e.message);
       res.status(500).json({ error: e.message || 'Failed to discover log sources' });
+    } finally {
+      // Always clean up so the next call can open a fresh connection
+      pendingDiscovery.delete(cacheKey);
     }
   });
+
 
   server.post('/api/servers', authenticateToken, requireAdmin, async (req, res) => {
     const { name, host, port, username, privateKey } = req.body;
@@ -473,6 +596,134 @@ app.prepare().then(async () => {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: 'Failed to delete server' });
+    }
+  });
+
+  // Serve the secure log-wrapper.sh file
+  server.get('/log-wrapper.sh', (req, res) => {
+    const filePath = path.join(__dirname, 'log-wrapper.sh');
+    if (fs.existsSync(filePath)) {
+      res.setHeader('Content-Type', 'text/x-sh');
+      res.sendFile(filePath);
+    } else {
+      res.status(404).send('Error: log-wrapper.sh not found');
+    }
+  });
+
+  // Get a secure setup token (admin only)
+  server.get('/api/setup/token', authenticateToken, requireAdmin, (req, res) => {
+    const token = jwt.sign({ purpose: 'setup-node' }, JWT_SECRET, { expiresIn: '30m' });
+    res.json({ token });
+  });
+
+  // Serve dynamic auto-setup bash script
+  server.get('/api/setup-node', (req, res) => {
+    const token = req.query.token;
+    if (!token) return res.status(401).send('Error: Missing setup token');
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.purpose !== 'setup-node') {
+        return res.status(403).send('Error: Invalid token');
+      }
+    } catch (err) {
+      return res.status(403).send('Error: Token expired or invalid');
+    }
+
+    if (!fs.existsSync(PUBLIC_KEY_PATH)) {
+      return res.status(500).send('Error: Master public key not generated yet');
+    }
+
+    const pubKey = fs.readFileSync(PUBLIC_KEY_PATH, 'utf8').trim();
+    const appHost = req.headers.host;
+
+    const bashScript = `#!/bin/bash
+set -e
+
+echo -e "\\x1b[32m=== PulseLog Node Auto-Setup ===\\x1b[0m"
+
+if [ "$EUID" -ne 0 ]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
+echo "Creating /usr/log/bin/ directory..."
+$SUDO mkdir -p /usr/log/bin/
+
+echo "Downloading log-wrapper.sh from app..."
+$SUDO curl -fsSL -k "https://${appHost}/log-wrapper.sh" -o /usr/log/bin/log-wrapper.sh
+$SUDO chmod +x /usr/log/bin/log-wrapper.sh
+
+echo "Configuring SSH key authorization..."
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+RESTRICTION='command="/usr/log/bin/log-wrapper.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty'
+PUBKEY='${pubKey}'
+FULL_LINE="\${RESTRICTION} \${PUBKEY}"
+
+if ! grep -qF "\${PUBKEY}" ~/.ssh/authorized_keys; then
+  echo "\${FULL_LINE}" >> ~/.ssh/authorized_keys
+  echo "SSH Key Authorized."
+else
+  echo "SSH Key already authorized."
+fi
+
+MY_IP=\$(curl -s ifconfig.me || curl -s icanhazip.com || curl -s checkip.amazonaws.com || echo "")
+if [ -z "\${MY_IP}" ]; then
+  MY_IP=\$(hostname -I | awk '{print \$1}')
+fi
+
+MY_HOSTNAME=\$(hostname)
+MY_USER=\$(whoami)
+
+echo "Registering server with PulseLog as '\${MY_HOSTNAME}' (\${MY_IP})..."
+
+curl -s -k -X POST "https://${appHost}/api/servers/register-remote?token=${token}" \\
+  -H "Content-Type: application/json" \\
+  -d "{\\"name\\":\\"\${MY_HOSTNAME}\\", \\"host\\":\\"\${MY_IP}\\", \\"username\\":\\"\${MY_USER}\\", \\"port\\":22}"
+
+echo -e "\\x1b[32m=== SETUP COMPLETE! Server '\${MY_HOSTNAME}' Registered Successfully! ===\\x1b[0m"
+`;
+
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(bashScript);
+  });
+
+  // Handle remote auto-registration from setup-node
+  server.post('/api/servers/register-remote', async (req, res) => {
+    const token = req.query.token;
+    if (!token) return res.status(401).json({ error: 'Unauthorized: Missing setup token' });
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.purpose !== 'setup-node') {
+        return res.status(403).json({ error: 'Invalid token' });
+      }
+    } catch (err) {
+      return res.status(403).json({ error: 'Token expired or invalid' });
+    }
+
+    const { name, host, username, port } = req.body;
+    if (!name || !host || !username) {
+      return res.status(400).json({ error: 'Missing name, host, or username' });
+    }
+
+    try {
+      if (!fs.existsSync(PRIVATE_KEY_PATH)) {
+        return res.status(500).json({ error: 'Master private key not generated' });
+      }
+      const privateKey = fs.readFileSync(PRIVATE_KEY_PATH, 'utf8');
+      const cleanKey = SSHController.sanitizeKey(privateKey);
+      const encryptedKey = encrypt(cleanKey);
+
+      const result = await dbRun('INSERT INTO servers (name, host, port, username, privateKey) VALUES (?, ?, ?, ?, ?)',
+        [name, host, port || 22, username, encryptedKey]);
+      res.json({ success: true, id: result.id });
+    } catch (e) {
+      console.error('[AUTO REGISTRATION ERROR]', e.message);
+      res.status(500).json({ error: 'Auto-registration database insert failed' });
     }
   });
 
