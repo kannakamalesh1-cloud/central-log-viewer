@@ -22,11 +22,13 @@ interface UserData {
   email: string;
   role: string;
   createdAt: string;
+  isOnline?: boolean;
 }
 
 
 interface SidebarProps {
   userRole: string;
+  currentUserEmail: string;
   selectedServerId: number | null;
   setSelectedServerId: (id: number | null) => void;
   activeSourceId: string | null;
@@ -37,7 +39,7 @@ interface SidebarProps {
 
 const defaultForm = { name: '', host: '', port: '22', username: '', privateKey: '' };
 
-export default function Sidebar({ userRole, selectedServerId, setSelectedServerId, activeSourceId, onSelect, onShowDashboard }: SidebarProps) {
+export default function Sidebar({ userRole, currentUserEmail, selectedServerId, setSelectedServerId, activeSourceId, onSelect, onShowDashboard }: SidebarProps) {
   const [servers, setServers] = useState<ServerData[]>([]);
   const [logSources, setLogSources] = useState<LogSource[]>([]);
   const [loadingSources, setLoadingSources] = useState(false);
@@ -131,6 +133,14 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
     fetchServers();
     if (userRole === 'admin') fetchUsers();
   }, [userRole]);
+
+  useEffect(() => {
+    if (showUserPanel && userRole === 'admin') {
+      fetchUsers();
+      const interval = setInterval(fetchUsers, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [showUserPanel, userRole]);
 
   const fetchSources = () => {
     if (!selectedServerId) { setLogSources([]); setSourceError(null); return; }
@@ -332,7 +342,7 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userForm.email || !userForm.password) return;
+    if (!userForm.email) return;
     setUserSaving(true);
     try {
       const res = await fetch('/api/users', {
@@ -349,10 +359,25 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (!confirm('Are you sure you want to remove this user?')) return;
+  const handleDeleteUser = async (user: UserData) => {
+    const isCurrent = user.email.toLowerCase() === currentUserEmail.toLowerCase();
+    if (isCurrent) {
+      alert('Security Alert: You cannot delete your own currently logged-in account.');
+      return;
+    }
+
+    // First confirmation
+    const firstConfirm = confirm(`Are you sure you want to remove user "${user.email}"?`);
+    if (!firstConfirm) return;
+
+    // Second confirmation if they are an admin
+    if (user.role === 'admin') {
+      const secondConfirm = confirm(`[CRITICAL ACTION] "${user.email}" is an ADMINISTRATOR. Deleting this user will remove all of their administrative privileges. Are you absolutely certain you want to proceed?`);
+      if (!secondConfirm) return;
+    }
+
     try {
-      const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
       if (res.ok) fetchUsers();
       else {
         const data = await res.json();
@@ -1004,14 +1029,16 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center justify-between">
+                <span>Password</span>
+                <span className="text-[8px] text-sky-500 font-bold lowercase normal-case tracking-normal">Optional for Microsoft SSO</span>
+              </label>
               <input
                 type="password"
-                required
                 value={userForm.password}
                 onChange={e => setUserForm({ ...userForm, password: e.target.value })}
                 className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
-                placeholder="••••••••"
+                placeholder="Leave blank for SSO login..."
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -1036,22 +1063,35 @@ export default function Sidebar({ userRole, selectedServerId, setSelectedServerI
 
           <div className="space-y-3">
             <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Active Users</h3>
-            {users.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 group shadow-sm">
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-bold text-slate-800 truncate">{u.email}</span>
-                  <span className={`text-[9px] uppercase font-black tracking-tighter ${u.role === 'admin' ? 'text-sky-600' : 'text-slate-400'}`}>{u.role}</span>
+            {users.map(u => {
+              const isCurrent = u.email.toLowerCase() === currentUserEmail.toLowerCase();
+              return (
+                <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 group shadow-sm">
+                  <div className="flex flex-col min-w-0 flex-1 pr-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs font-bold text-slate-800 truncate" title={u.email}>{u.email}</span>
+                      {u.isOnline && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)] shrink-0" title="Online now" />
+                      )}
+                      {isCurrent && (
+                        <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[8px] font-black tracking-widest px-1.5 py-0.5 rounded-full uppercase shrink-0">
+                          You
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-[9px] uppercase font-black tracking-tighter ${u.role === 'admin' ? 'text-sky-600' : 'text-slate-400'}`}>{u.role}</span>
+                  </div>
+                  {!isCurrent && (
+                    <button
+                      onClick={() => handleDeleteUser(u)}
+                      className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                {u.role !== 'admin' && (
-                  <button
-                    onClick={() => handleDeleteUser(u.id)}
-                    className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

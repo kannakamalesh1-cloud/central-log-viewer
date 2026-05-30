@@ -9,6 +9,7 @@ services:
       - ./data:/app/data
       - ~/.pulselog_key:/root/.pulselog_key
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./.env:/app/.env
     environment:
       - NODE_ENV=production
       - PORT=3000

@@ -41,6 +41,7 @@ COPY --from=builder /app/public ./public
 
 # IMPORTANT FIX: ensure Next runtime works with custom server
 COPY --from=builder /app/server.js ./
+COPY --from=builder /app/key.pem /app/cert.pem ./
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/data ./data
 COPY --from=builder /app/log-wrapper.* ./

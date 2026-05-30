@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { createServer } = require('http');
+const https = require('https');
 const next = require('next');
 const { Server } = require('socket.io');
 const { initDB, get, all, run: dbRun } = require('./src/lib/db.js');
@@ -115,7 +115,12 @@ app.prepare().then(async () => {
   server.use(express.json());
   server.use(cookieParser());
 
-  const httpServer = createServer(server);
+  const sslOptions = {
+    key: fs.readFileSync(path.join(__dirname, 'key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, 'cert.pem'))
+  };
+
+  const httpServer = https.createServer(sslOptions, server);
   const io = new Server(httpServer);
 
   // WebSocket Authentication Middleware
@@ -227,6 +232,100 @@ app.prepare().then(async () => {
     });
   });
 
+  // Microsoft OAuth2 endpoints
+  const MS_AUTH_URL = `https://login.microsoftonline.com/${process.env.MS_TENANT_ID}/oauth2/v2.0/authorize`;
+  const MS_TOKEN_URL = `https://login.microsoftonline.com/${process.env.MS_TENANT_ID}/oauth2/v2.0/token`;
+
+  server.get('/api/auth/microsoft', (req, res) => {
+    const state = crypto.randomBytes(16).toString('hex');
+    res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000, sameSite: 'lax' }); // 10 min TTL
+
+    const params = new URLSearchParams({
+      client_id: process.env.MS_CLIENT_ID || '',
+      response_type: 'code',
+      redirect_uri: process.env.REDIRECT_URI || '',
+      response_mode: 'query',
+      scope: 'openid profile email User.Read',
+      state: state
+    });
+
+    res.redirect(`${MS_AUTH_URL}?${params.toString()}`);
+  });
+
+  server.get('/api/auth/microsoft/callback', async (req, res) => {
+    const { code, state, error, error_description } = req.query;
+    const cookieState = req.cookies.oauth_state;
+
+    res.clearCookie('oauth_state');
+
+    if (error) {
+      console.error('[MICROSOFT AUTH PORTAL ERROR]', error, error_description);
+      return res.redirect(`/?error=ms_auth_failed`);
+    }
+
+    if (!code || !state || state !== cookieState) {
+      console.error('[MICROSOFT STATE MISMATCH OR NO CODE]');
+      return res.redirect(`/?error=security_mismatch`);
+    }
+
+    try {
+      // Exchange code for access tokens
+      const tokenResponse = await fetch(MS_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.MS_CLIENT_ID || '',
+          client_secret: process.env.MS_CLIENT_SECRET || '',
+          code: String(code),
+          redirect_uri: process.env.REDIRECT_URI || '',
+          grant_type: 'authorization_code'
+        })
+      });
+
+      const tokens = await tokenResponse.json();
+      if (!tokens.access_token) {
+        console.error('[MICROSOFT TOKEN EXCHANGE FAILED]', tokens);
+        return res.redirect(`/?error=token_exchange_failed`);
+      }
+
+      // Fetch user profile from Microsoft Graph
+      const profileResponse = await fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+
+      const profile = await profileResponse.json();
+      const email = profile.mail || profile.userPrincipalName;
+
+      if (!email) {
+        console.error('[MICROSOFT EMAIL NOT FOUND IN PROFILE]', profile);
+        return res.redirect(`/?error=email_not_found`);
+      }
+
+      // Verify the user email exists in SQLite database
+      const user = await get('SELECT * FROM users WHERE email = ? COLLATE BINARY', [email]);
+
+      if (user) {
+        console.log(`[MICROSOFT LOGIN SUCCESS] User: "${email}" (Role: "${user.role}")`);
+        const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '12h' });
+        
+        res.cookie('token', token, { 
+          httpOnly: true, 
+          secure: false, // Set to true if running under standard public HTTPS certs
+          sameSite: 'strict', 
+          maxAge: 12 * 60 * 60 * 1000 
+        });
+
+        res.redirect('/');
+      } else {
+        console.warn(`[MICROSOFT LOGIN BLOCKED] Non-whitelisted corporate email attempted login: "${email}"`);
+        res.redirect(`/?error=unauthorized_email&email=${encodeURIComponent(email)}`);
+      }
+    } catch (err) {
+      console.error('[MICROSOFT CALLBACK EXCEPTION]', err);
+      res.redirect(`/?error=ms_server_error`);
+    }
+  });
+
   server.post('/api/auth/login', loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Invalid credentials' });
@@ -266,18 +365,44 @@ app.prepare().then(async () => {
     }
   });
 
-  // User Management APIs - ADMIN ONLY
   server.get('/api/users', authenticateToken, requireAdmin, async (req, res) => {
-    const users = await all('SELECT id, email, role, createdAt FROM users');
-    res.json(users);
+    try {
+      const users = await all('SELECT id, email, role, createdAt FROM users');
+      const activeEmails = new Set();
+
+      if (typeof io !== 'undefined' && io.fetchSockets) {
+        const sockets = await io.fetchSockets();
+        for (const s of sockets) {
+          if (s.user && s.user.email) {
+            activeEmails.add(s.user.email.toLowerCase());
+          }
+        }
+      }
+
+      if (req.user && req.user.email) {
+        activeEmails.add(req.user.email.toLowerCase());
+      }
+
+      const usersWithStatus = users.map(u => ({
+        ...u,
+        isOnline: activeEmails.has(u.email.toLowerCase())
+      }));
+
+      res.json(usersWithStatus);
+    } catch (err) {
+      console.error('Failed to retrieve active users:', err);
+      res.status(500).json({ error: 'Failed to fetch users' });
+    }
   });
 
   server.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
     const { email, password, role } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'User and password required' });
+    if (!email) return res.status(400).json({ error: 'Username/Email is required' });
 
     try {
-      const hash = bcrypt.hashSync(password, 12);
+      // Auto-generate a secure random fallback password if none is provided (e.g. for SSO whitelisting)
+      const passwordToHash = password || crypto.randomBytes(32).toString('hex');
+      const hash = bcrypt.hashSync(passwordToHash, 12);
       await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, role || 'viewer']);
       res.json({ success: true });
     } catch (err) {

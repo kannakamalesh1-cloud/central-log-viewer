@@ -10,6 +10,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [userRole, setUserRole] = useState("viewer");
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -75,6 +76,7 @@ export default function Home() {
           const data = await res.json();
           if (data.authenticated) {
             setUserRole(data.user.role || "viewer");
+            setCurrentUserEmail(data.user.email || "");
             setIsLoggedIn(true);
           }
         }
@@ -85,6 +87,30 @@ export default function Home() {
       }
     };
     verifySession();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get('error');
+    if (errorParam) {
+      if (errorParam === 'unauthorized_email') {
+        const email = params.get('email');
+        setError(`Corporate email not authorized: ${email || ''}. Contact an administrator.`);
+      } else if (errorParam === 'ms_auth_failed') {
+        setError("Microsoft single sign-on authentication failed.");
+      } else if (errorParam === 'security_mismatch') {
+        setError("Security verification failed. CSRF mismatch.");
+      } else if (errorParam === 'token_exchange_failed') {
+        setError("Failed to communicate with Microsoft authentication token server.");
+      } else if (errorParam === 'email_not_found') {
+        setError("Your Microsoft profile does not have a primary email address configured.");
+      } else {
+        setError("Failed to login with Microsoft account.");
+      }
+      
+      // Clean up the URL query params so they don't stick around on page refresh
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -98,6 +124,7 @@ export default function Home() {
       if (res.ok) {
         const data = await res.json();
         setUserRole(data.role || "viewer");
+        setCurrentUserEmail(data.email || username);
         setIsLoggedIn(true);
       } else {
         setError("Invalid credentials");
@@ -217,6 +244,25 @@ export default function Home() {
               </button>
             </form>
 
+            <div className="flex items-center gap-3 my-5">
+              <div className="h-px flex-1 bg-slate-100" />
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">or login with</span>
+              <div className="h-px flex-1 bg-slate-100" />
+            </div>
+
+            <a
+              href="/api/auth/microsoft"
+              className="w-full bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-600 font-black uppercase text-xs tracking-[0.2em] rounded-2xl py-4.5 transition-all shadow-sm flex items-center justify-center gap-3 active:scale-[0.99]"
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="10" height="10" fill="#F35325"/>
+                <rect x="11" width="10" height="10" fill="#81BC06"/>
+                <rect y="11" width="10" height="10" fill="#05A6F0"/>
+                <rect x="11" y="11" width="10" height="10" fill="#FFBA08"/>
+              </svg>
+              <span>Microsoft Account</span>
+            </a>
+
             <div className="mt-10 pt-8 border-t border-slate-100 flex items-center justify-between">
               <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Version 2.4.0-PROD</p>
               <div className="flex items-center gap-1.5">
@@ -238,6 +284,7 @@ export default function Home() {
     <div className="fixed inset-0 w-full h-full bg-slate-50 flex text-slate-900 overflow-hidden overscroll-none font-sans select-none">
       <Sidebar
         userRole={userRole}
+        currentUserEmail={currentUserEmail}
         selectedServerId={selectedServerId}
         setSelectedServerId={setSelectedServerId}
         activeSourceId={slots[activeSlotIndex]?.sourceId}
