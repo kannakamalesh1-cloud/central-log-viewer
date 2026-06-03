@@ -89,6 +89,14 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
       convertEol: true,
       cursorInactiveStyle: 'outline',
     });
+
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'v')) {
+        return false;
+      }
+      return true;
+    });
+
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);

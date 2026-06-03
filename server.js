@@ -91,6 +91,30 @@ function readAdminEmailsFromDisk() {
   return [];
 }
 
+/**
+ * Reads ALLOWED_DOMAINS directly from the .env file on disk every time it is called.
+ * Any Microsoft account whose email domain matches will be auto-provisioned as a Viewer.
+ */
+function readAllowedDomainsFromDisk() {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    const raw = fs.readFileSync(envPath, 'utf8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('ALLOWED_DOMAINS=')) {
+        const value = trimmed.slice('ALLOWED_DOMAINS='.length).trim();
+        return value
+          .split(',')
+          .map(d => d.trim().toLowerCase())
+          .filter(Boolean);
+      }
+    }
+  } catch (e) {
+    console.error('[ALLOWED_DOMAINS] Failed to read .env from disk:', e.message);
+  }
+  return [];
+}
+
 // Middlewares
 const authenticateToken = async (req, res, next) => {
   const token = req.cookies.token;
@@ -104,9 +128,15 @@ const authenticateToken = async (req, res, next) => {
     console.error('Blacklist check error', err);
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, async (err, user) => {
     if (err) return res.status(403).json({ error: 'Forbidden' });
-    req.user = user;
+    try {
+      const dbUser = await get('SELECT id, email, role FROM users WHERE id = ?', [user.id]);
+      if (!dbUser) return res.status(401).json({ error: 'User no longer exists' });
+      req.user = { id: dbUser.id, email: dbUser.email, role: dbUser.role };
+    } catch (e) {
+      req.user = user;
+    }
     next();
   });
 };
@@ -188,7 +218,13 @@ app.prepare().then(async () => {
         if (blacklisted) return next(new Error('Authentication error: Session invalidated'));
       } catch (e) { }
 
-      socket.user = decoded;
+      try {
+        const dbUser = await get('SELECT id, email, role FROM users WHERE id = ?', [decoded.id]);
+        if (!dbUser) return next(new Error('Authentication error: User no longer exists'));
+        socket.user = { id: dbUser.id, email: dbUser.email, role: dbUser.role };
+      } catch (e) {
+        socket.user = decoded;
+      }
       next();
     });
   });
@@ -209,9 +245,36 @@ app.prepare().then(async () => {
 
       // Strict Input Sanitization - Allow metadata separators in sourceId
       let cleanSourceId = sourceId;
-      if (sourceId.includes('|')) {
+      let commandStr;
+
+      if (logType === 'k8s-file' && sourceId.includes('|')) {
+        // Pod file: sourceId = "namespace/podname|/path/to/file.log" or "namespace/podname|container_name|/path/to/file.log"
         const parts = sourceId.split('|');
-        // If the second part is an absolute path, use it
+        if (parts.length === 3) {
+          const [podId, containerName, filePath] = parts;
+          const searchTermStr = searchTerm ? ` ${searchTerm}` : '';
+          commandStr = `read-pod-file ${podId} ${filePath} --container ${containerName}${searchTermStr}`;
+          cleanSourceId = `${podId} ${filePath} ${containerName}`; // for validation
+        } else {
+          const [podId, filePath] = parts;
+          const searchTermStr = searchTerm ? ` ${searchTerm}` : '';
+          commandStr = `read-pod-file ${podId} ${filePath}${searchTermStr}`;
+          cleanSourceId = `${podId} ${filePath}`; // for validation
+        }
+      } else if (logType === 'k8s-container' && sourceId.includes('|')) {
+        // Pod container: sourceId = "namespace/podname|container_name"
+        const [podId, containerName] = sourceId.split('|');
+        const searchTermStr = searchTerm ? ` ${searchTerm}` : '';
+        commandStr = `read-pod-container ${podId} ${containerName}${searchTermStr}`;
+        cleanSourceId = `${podId} ${containerName}`; // for validation
+      } else if (logType === 'docker-file' && sourceId.includes('|')) {
+        // Container file: sourceId = "container_name|/path/to/file.log"
+        const [containerName, filePath] = sourceId.split('|');
+        const searchTermStr = searchTerm ? ` ${searchTerm}` : '';
+        commandStr = `read-container-file ${containerName} ${filePath}${searchTermStr}`;
+        cleanSourceId = `${containerName} ${filePath}`; // for validation
+      } else if (sourceId.includes('|')) {
+        const parts = sourceId.split('|');
         if (parts[1] && parts[1].startsWith('/')) {
           cleanSourceId = parts[1];
         } else {
@@ -240,6 +303,19 @@ app.prepare().then(async () => {
           return;
         }
 
+        if (socket.user.role !== 'admin') {
+          const hasAccess = await get(`
+            SELECT 1 FROM servers s
+            INNER JOIN server_group_members sgm ON sgm.serverId = s.id
+            INNER JOIN user_group_access uga ON uga.groupId = sgm.groupId
+            WHERE s.id = ? AND uga.userId = ?
+          `, [serverId, socket.user.id]);
+          if (!hasAccess) {
+            socket.emit('terminal:data', '\x1b[31m[ERROR] Access Denied: You do not have permission to access this server.\x1b[0m\r\n');
+            return;
+          }
+        }
+
         if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
 
         try {
@@ -252,8 +328,10 @@ app.prepare().then(async () => {
         if (activeSSH) activeSSH.disconnect();
         activeSSH = new SSHController(socket);
 
-        const searchTermStr = searchTerm ? ` ${searchTerm}` : '';
-        const commandStr = `read-logs ${logType} ${cleanSourceId}${searchTermStr}`;
+        if (!commandStr) {
+          const searchTermStr = searchTerm ? ` ${searchTerm}` : '';
+          commandStr = `read-logs ${logType} ${cleanSourceId}${searchTermStr}`;
+        }
         activeSSH.connectAndStream(serverConfig, commandStr);
 
       } catch (err) {
@@ -276,9 +354,20 @@ app.prepare().then(async () => {
       if (blacklisted) return res.json({ authenticated: false });
     } catch (e) { }
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
+    jwt.verify(token, JWT_SECRET, async (err, decoded) => {
       if (err) return res.json({ authenticated: false });
-      res.json({ authenticated: true, user: { email: user.email, role: user.role } });
+
+      // Always fetch the current role from DB so role changes take effect immediately on refresh
+      // without requiring the user to log out and back in
+      try {
+        const dbUser = await get('SELECT id, email, role FROM users WHERE id = ?', [decoded.id]);
+        if (!dbUser) return res.json({ authenticated: false }); // User was deleted
+
+        res.json({ authenticated: true, user: { email: dbUser.email, role: dbUser.role } });
+      } catch (e) {
+        // Fallback to JWT role if DB query fails
+        res.json({ authenticated: true, user: { email: decoded.email, role: decoded.role } });
+      }
     });
   });
 
@@ -351,9 +440,14 @@ app.prepare().then(async () => {
         return res.redirect(`/?error=email_not_found`);
       }
 
-      // Read ADMIN_EMAILS live from .env on disk (no restart needed after edits)
+      // Read ADMIN_EMAILS and ALLOWED_DOMAINS live from .env (no restart needed after edits)
       const adminEmails = readAdminEmailsFromDisk();
-      const isAdminEmail = adminEmails.includes(email.toLowerCase());
+      const allowedDomains = readAllowedDomainsFromDisk();
+      const emailLower = email.toLowerCase();
+      const emailDomain = emailLower.split('@')[1] || '';
+
+      const isAdminEmail = adminEmails.includes(emailLower);
+      const isAllowedDomain = allowedDomains.includes(emailDomain);
 
       // Check if user already exists in the DB
       let user = await get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', [email]);
@@ -361,23 +455,36 @@ app.prepare().then(async () => {
       if (isAdminEmail) {
         // Auto-provision or promote to admin if email is in ADMIN_EMAILS
         if (!user) {
-          // New admin user — insert into DB with a random unusable password (SSO only)
           const hash = require('bcrypt').hashSync(require('crypto').randomBytes(32).toString('hex'), 10);
           const result = await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, 'admin']);
           user = { id: result.id, email, role: 'admin' };
           console.log(`[MICROSOFT ADMIN AUTO-PROVISIONED] "${email}" added as admin.`);
         } else if (user.role !== 'admin') {
-          // Existing user — elevate to admin
           await dbRun('UPDATE users SET role = ? WHERE id = ?', ['admin', user.id]);
           user = { ...user, role: 'admin' };
           console.log(`[MICROSOFT ADMIN PROMOTED] "${email}" elevated to admin.`);
         }
+      } else if (isAllowedDomain) {
+        // Auto-provision as Viewer if email domain is in ALLOWED_DOMAINS
+        if (!user) {
+          const hash = require('bcrypt').hashSync(require('crypto').randomBytes(32).toString('hex'), 10);
+          const result = await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, 'viewer']);
+          user = { id: result.id, email, role: 'viewer' };
+          console.log(`[MICROSOFT VIEWER AUTO-PROVISIONED] "${email}" added as viewer (domain: ${emailDomain}).`);
+        } else if (user.role === 'admin' && !isAdminEmail) {
+          // Was admin but removed from ADMIN_EMAILS — demote to viewer
+          await dbRun('UPDATE users SET role = ? WHERE id = ?', ['viewer', user.id]);
+          user = { ...user, role: 'viewer' };
+          console.log(`[MICROSOFT ADMIN DEMOTED] "${email}" demoted to viewer (removed from ADMIN_EMAILS).`);
+        }
       } else {
-        // If not in ADMIN_EMAILS anymore, but they exist as admin in DB, they were removed from the env whitelist!
+        // Domain not allowed — block login and remove from DB if somehow they exist
         if (user && user.role === 'admin') {
           await dbRun('DELETE FROM users WHERE id = ?', [user.id]);
           user = null;
-          console.log(`[MICROSOFT LOGIN BLOCKED] "${email}" removed from DB and blocked because they are no longer in ADMIN_EMAILS.`);
+          console.log(`[MICROSOFT LOGIN BLOCKED] "${email}" removed from DB — no longer in ADMIN_EMAILS and domain not allowed.`);
+        } else if (user) {
+          user = null; // Existing viewer from a now-blocked domain — deny access
         }
       }
 
@@ -387,14 +494,14 @@ app.prepare().then(async () => {
 
         res.cookie('token', token, {
           httpOnly: true,
-          secure: false, // Set to true if running under standard public HTTPS certs
+          secure: false,
           sameSite: 'strict',
           maxAge: 12 * 60 * 60 * 1000
         });
 
         res.redirect('/');
       } else {
-        console.warn(`[MICROSOFT LOGIN BLOCKED] Non-whitelisted email attempted login: "${email}"`);
+        console.warn(`[MICROSOFT LOGIN BLOCKED] Unauthorized email attempted login: "${email}"`);
         res.redirect(`/?error=unauthorized_email&email=${encodeURIComponent(email)}`);
       }
     } catch (err) {
@@ -515,18 +622,171 @@ app.prepare().then(async () => {
   });
 
 
+  // ── SERVER GROUPS API ──────────────────────────────────────────────────────
+
+  // GET all groups with their server members (admin panel)
+  server.get('/api/groups', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const groups = await all('SELECT * FROM server_groups ORDER BY name');
+      for (const group of groups) {
+        group.servers = await all(
+          'SELECT s.id, s.name, s.host FROM servers s INNER JOIN server_group_members sgm ON sgm.serverId = s.id WHERE sgm.groupId = ?',
+          [group.id]
+        );
+      }
+      res.json(groups);
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to fetch groups' });
+    }
+  });
+
+  // POST create a new group
+  server.post('/api/groups', authenticateToken, requireAdmin, async (req, res) => {
+    const { name, description, serverIds } = req.body;
+    if (!name) return res.status(400).json({ error: 'Group name is required' });
+    try {
+      const result = await dbRun('INSERT INTO server_groups (name, description) VALUES (?, ?)', [name.trim(), description || '']);
+      const groupId = result.id;
+      if (Array.isArray(serverIds)) {
+        for (const sid of serverIds) {
+          await dbRun('INSERT OR IGNORE INTO server_group_members (groupId, serverId) VALUES (?, ?)', [groupId, sid]);
+        }
+      }
+      res.json({ success: true, id: groupId });
+    } catch (e) {
+      res.status(500).json({ error: e.message || 'Failed to create group' });
+    }
+  });
+
+  // PUT update a group (name, description, server members)
+  server.put('/api/groups/:id', authenticateToken, requireAdmin, async (req, res) => {
+    const { name, description, serverIds } = req.body;
+    const groupId = req.params.id;
+    try {
+      await dbRun('UPDATE server_groups SET name = ?, description = ? WHERE id = ?', [name.trim(), description || '', groupId]);
+      await dbRun('DELETE FROM server_group_members WHERE groupId = ?', [groupId]);
+      if (Array.isArray(serverIds)) {
+        for (const sid of serverIds) {
+          await dbRun('INSERT OR IGNORE INTO server_group_members (groupId, serverId) VALUES (?, ?)', [groupId, sid]);
+        }
+      }
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message || 'Failed to update group' });
+    }
+  });
+
+  // DELETE a group
+  server.delete('/api/groups/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      await dbRun('DELETE FROM server_groups WHERE id = ?', [req.params.id]);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to delete group' });
+    }
+  });
+
+  // GET groups assigned to a specific user
+  server.get('/api/users/:id/groups', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const groups = await all(
+        'SELECT g.id, g.name FROM server_groups g INNER JOIN user_group_access uga ON uga.groupId = g.id WHERE uga.userId = ?',
+        [req.params.id]
+      );
+      res.json(groups);
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to fetch user groups' });
+    }
+  });
+
+  // PUT update groups assigned to a user (replaces all)
+  server.put('/api/users/:id/groups', authenticateToken, requireAdmin, async (req, res) => {
+    const { groupIds } = req.body;
+    const userId = req.params.id;
+    try {
+      await dbRun('DELETE FROM user_group_access WHERE userId = ?', [userId]);
+      if (Array.isArray(groupIds)) {
+        for (const gid of groupIds) {
+          await dbRun('INSERT OR IGNORE INTO user_group_access (userId, groupId) VALUES (?, ?)', [userId, gid]);
+        }
+      }
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to update user groups' });
+    }
+  });
+
+  // GET grouped servers for sidebar (respects user access)
+  server.get('/api/groups/with-servers', authenticateToken, async (req, res) => {
+    try {
+      let groups;
+      if (req.user.role === 'admin') {
+        groups = await all('SELECT * FROM server_groups ORDER BY name');
+        for (const group of groups) {
+          group.servers = await all(
+            'SELECT s.id, s.name, s.host FROM servers s INNER JOIN server_group_members sgm ON sgm.serverId = s.id WHERE sgm.groupId = ?',
+            [group.id]
+          );
+        }
+      } else {
+        groups = await all(
+          'SELECT g.* FROM server_groups g INNER JOIN user_group_access uga ON uga.groupId = g.id WHERE uga.userId = ? ORDER BY g.name',
+          [req.user.id]
+        );
+        for (const group of groups) {
+          group.servers = await all(
+            'SELECT s.id, s.name, s.host FROM servers s INNER JOIN server_group_members sgm ON sgm.serverId = s.id WHERE sgm.groupId = ?',
+            [group.id]
+          );
+        }
+      }
+      res.json(groups);
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to fetch grouped servers' });
+    }
+  });
+
+  // ── END SERVER GROUPS API ─────────────────────────────────────────────────
 
   server.get('/api/servers', authenticateToken, async (req, res) => {
-    const servers = await all('SELECT id, name, host, port, username, createdAt FROM servers');
-    res.json(servers);
+    try {
+      // Admins always see all servers
+      if (req.user.role === 'admin') {
+        const servers = await all('SELECT id, name, host, port, username, createdAt FROM servers');
+        return res.json(servers);
+      }
+      // Viewers: only servers in groups they have access to
+      const servers = await all(`
+        SELECT DISTINCT s.id, s.name, s.host, s.port, s.username, s.createdAt
+        FROM servers s
+        INNER JOIN server_group_members sgm ON sgm.serverId = s.id
+        INNER JOIN user_group_access uga ON uga.groupId = sgm.groupId
+        WHERE uga.userId = ?
+      `, [req.user.id]);
+      res.json(servers);
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to fetch servers' });
+    }
   });
 
   server.get('/api/servers/:id', authenticateToken, async (req, res) => {
     try {
-      const server = await get('SELECT * FROM servers WHERE id = ?', [req.params.id]);
-      if (!server) return res.status(404).json({ error: 'Server not found' });
-      if (server.privateKey) server.privateKey = decrypt(server.privateKey);
-      res.json(server);
+      const serverId = req.params.id;
+      if (req.user.role !== 'admin') {
+        const hasAccess = await get(`
+          SELECT 1 FROM servers s
+          INNER JOIN server_group_members sgm ON sgm.serverId = s.id
+          INNER JOIN user_group_access uga ON uga.groupId = sgm.groupId
+          WHERE s.id = ? AND uga.userId = ?
+        `, [serverId, req.user.id]);
+        if (!hasAccess) {
+          return res.status(403).json({ error: 'Access Denied: You do not have permission to access this server.' });
+        }
+      }
+      const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
+      if (!serverConfig) return res.status(404).json({ error: 'Server not found' });
+      if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
+      res.json(serverConfig);
     } catch (e) {
       res.status(500).json({ error: 'Failed to fetch server details' });
     }
@@ -576,6 +836,88 @@ app.prepare().then(async () => {
     }
   });
 
+  // NEW: Discover log files inside a specific K8s pod
+  server.get('/api/servers/:id/pod-files', authenticateToken, async (req, res) => {
+    const serverId = req.params.id;
+    const podIdentifier = req.query.pod; // e.g. "default/celery-worker-abc123"
+
+    if (!podIdentifier) return res.status(400).json({ error: 'Missing pod query parameter' });
+
+    // Security: no path traversal or shell injection
+    if (/[;&`$(){}\\"']|\.\./.test(podIdentifier)) {
+      return res.status(400).json({ error: 'Invalid pod identifier' });
+    }
+
+    try {
+      const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
+      if (!serverConfig) return res.status(404).json({ error: 'Server not found' });
+      if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
+
+      const ssh = new SSHController(null);
+      const sources = await ssh.discoverLogSources(serverConfig, `pod-files ${podIdentifier}`);
+
+      // Parse the k8s-container:namespace/pod|container|status
+      // and k8s-file:namespace/pod|container|/path/to/file|status lines
+      const items = sources
+        .map(s => {
+          if (s.type === 'k8s-container') {
+            const [podId, containerName, status] = s.identifier.split('|');
+            return { type: 'k8s-container', identifier: `${podId}|${containerName}`, status: status || 'active', containerName };
+          } else if (s.type === 'k8s-file') {
+            const parts = s.identifier.split('|');
+            if (parts.length === 3) {
+              const [podId, containerName, filePath] = parts;
+              return { type: 'k8s-file', identifier: `${podId}|${containerName}|${filePath}`, status: s.status || 'file', containerName, filePath };
+            } else {
+              const [podId, filePath] = parts;
+              return { type: 'k8s-file', identifier: `${podId}|${filePath}`, status: s.status || 'file', filePath };
+            }
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      res.json(items);
+    } catch (e) {
+      console.error(`[POD FILES ERROR] Server ${serverId} pod ${podIdentifier}:`, e.message);
+      res.status(500).json({ error: e.message || 'Failed to list pod files' });
+    }
+  });
+
+  // NEW: Discover log files inside a specific Docker container
+  server.get('/api/servers/:id/container-files', authenticateToken, async (req, res) => {
+    const serverId = req.params.id;
+    const containerName = req.query.container; // e.g. "my-app-container"
+
+    if (!containerName) return res.status(400).json({ error: 'Missing container query parameter' });
+
+    // Security: no path traversal or shell injection
+    if (/[;&`$(){}\\"']|\.\./.test(containerName)) {
+      return res.status(400).json({ error: 'Invalid container name' });
+    }
+
+    try {
+      const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
+      if (!serverConfig) return res.status(404).json({ error: 'Server not found' });
+      if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
+
+      const ssh = new SSHController(null);
+      const sources = await ssh.discoverLogSources(serverConfig, `container-files ${containerName}`);
+
+      // Parse the docker-file:container|/path/to/file|status lines
+      const files = sources
+        .filter(s => s.type === 'docker-file')
+        .map(s => {
+          const [container, filePath, status] = s.identifier.split('|');
+          return { type: 'docker-file', identifier: `${container}|${filePath}`, status: status || 'file', filePath };
+        });
+
+      res.json(files);
+    } catch (e) {
+      console.error(`[CONTAINER FILES ERROR] Server ${serverId} container ${containerName}:`, e.message);
+      res.status(500).json({ error: e.message || 'Failed to list container files' });
+    }
+  });
 
   server.post('/api/servers', authenticateToken, requireAdmin, async (req, res) => {
     const { name, host, port, username, privateKey } = req.body;

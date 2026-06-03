@@ -49,16 +49,42 @@ function initDB() {
         logType TEXT,
         sourceId TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Server Groups Table
+      db.run(`CREATE TABLE IF NOT EXISTS server_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT DEFAULT '',
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Server Group Members (which servers belong to which group)
+      db.run(`CREATE TABLE IF NOT EXISTS server_group_members (
+        groupId INTEGER NOT NULL,
+        serverId INTEGER NOT NULL,
+        PRIMARY KEY (groupId, serverId),
+        FOREIGN KEY (groupId) REFERENCES server_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (serverId) REFERENCES servers(id) ON DELETE CASCADE
+      )`);
+
+      // User Group Access (which groups a user can access)
+      db.run(`CREATE TABLE IF NOT EXISTS user_group_access (
+        userId INTEGER NOT NULL,
+        groupId INTEGER NOT NULL,
+        PRIMARY KEY (userId, groupId),
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (groupId) REFERENCES server_groups(id) ON DELETE CASCADE
       )`, (err) => {
         if (err) return reject(err);
-        
+
          // Seed default admin if missing
          db.get('SELECT * FROM users WHERE email = ?', ['root'], (err, row) => {
             if (!row && !err) {
                const hash = bcrypt.hashSync('Aboss@3006', 12);
                db.run('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', ['root', hash, 'admin']);
             }
-            
+
             // Seed local system server if missing
             db.get('SELECT * FROM servers WHERE host = ?', ['localhost'], (err, row) => {
                if (!row && !err) {

@@ -85,25 +85,51 @@ case "$CMD" in
          done
       fi
     fi
-    # 5. System Logs
-    if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "system" ]]; then
-       # Direct check for most common files
-       for f in /var/log/syslog /var/log/messages /var/log/kern.log /var/log/dmesg; do
-         if [ -f "$f" ]; then
-            STATUS="active"
-            if [ -z "$(find "$f" -mmin -15 2>/dev/null)" ]; then STATUS="idle"; fi
-            echo "system:$(basename "$f")|$STATUS"
-         fi
-       done
-    fi
+    # 5. Core/System & Service Logs (Dynamic discovery of system, service, and utility log files in /var/log)
+    if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "system" || "$SCAN_TYPE" == "auth" || "$SCAN_TYPE" == "other" || "$SCAN_TYPE" == "php" || "$SCAN_TYPE" == "monitor" ]]; then
+       # Gather log files directly in /var/log (excluding rotated/gzipped files)
+       # And include the standard non-.log files like syslog, messages, secure, dmesg
+       for f in /var/log/*.log /var/log/syslog /var/log/messages /var/log/secure /var/log/dmesg; do
+         [ -f "$f" ] || continue
+         
+         # Skip rotated, compressed, or numerical log extensions (e.g., .log.1, .log.2.gz)
+         BASENAME=$(basename "$f")
+         [[ "$BASENAME" =~ \.[0-9]+$ || "$BASENAME" =~ \.gz$ || "$BASENAME" =~ \.[0-9]+\.log$ ]] && continue
 
-    # 6. Auth Logs
-    if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "auth" ]]; then
-       for f in /var/log/auth.log /var/log/secure; do
-         if [ -f "$f" ]; then
+         STATUS="active"
+         if [ -z "$(find "$f" -mmin -15 2>/dev/null)" ]; then STATUS="idle"; fi
+
+         # Categorize dynamically
+         if [[ "$BASENAME" == "auth.log" || "$BASENAME" == "secure" || "$BASENAME" == *fail2ban* || "$BASENAME" == *attack-response* ]]; then
             STATUS="security"
             if [ -z "$(find "$f" -mmin -15 2>/dev/null)" ]; then STATUS="idle"; fi
-            echo "auth:$(basename "$f")|$STATUS"
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "auth" ]]; then
+               echo "auth:$BASENAME|$STATUS"
+            fi
+         elif [[ "$BASENAME" == "syslog" || "$BASENAME" == "messages" || "$BASENAME" == "dmesg" || "$BASENAME" == "kern.log" || "$BASENAME" == *cloud-init* || "$BASENAME" == *ubuntu-advantage* ]]; then
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "system" ]]; then
+               echo "system:$BASENAME|$STATUS"
+            fi
+         elif [[ "$BASENAME" == *nginx* ]]; then
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "nginx" ]]; then
+               echo "nginx:$BASENAME|$STATUS"
+            fi
+         elif [[ "$BASENAME" == *apache* ]]; then
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "apache" ]]; then
+               echo "apache:$BASENAME|$STATUS"
+            fi
+         elif [[ "$BASENAME" == *php* ]]; then
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "php" ]]; then
+               echo "php:$BASENAME|$STATUS"
+            fi
+         elif [[ "$BASENAME" == *monitor* || "$BASENAME" == *sender* || "$BASENAME" == *bot* ]]; then
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "monitor" ]]; then
+               echo "monitor:$BASENAME|$STATUS"
+            fi
+         else
+            if [[ -z "$SCAN_TYPE" || "$SCAN_TYPE" == "other" ]]; then
+               echo "other:$BASENAME|$STATUS"
+            fi
          fi
        done
     fi
@@ -124,6 +150,175 @@ case "$CMD" in
     fi
     ;;
 
+  "discover-pod-files")
+    # Discovers log files and containers inside a specific Kubernetes pod
+    # Usage: discover-pod-files <namespace/podname>
+    POD_IDENTIFIER="$ARG1"
+
+    if [ -z "$POD_IDENTIFIER" ]; then
+      echo "[ERROR] No pod identifier provided"
+      exit 1
+    fi
+
+    if [[ "$POD_IDENTIFIER" == *"/"* ]]; then
+      K8S_NS="${POD_IDENTIFIER%%/*}"
+      K8S_POD="${POD_IDENTIFIER#*/}"
+      NS_FLAG="-n $K8S_NS"
+    else
+      K8S_POD="$POD_IDENTIFIER"
+      K8S_NS="default"
+      NS_FLAG=""
+    fi
+
+    # 1. Discover all containers inside the pod
+    CONTAINERS=$(timeout 3s kubectl get pod "$K8S_POD" $NS_FLAG -o jsonpath='{.spec.containers[*].name}' 2>/dev/null)
+    for container in $CONTAINERS; do
+      if [ -n "$container" ]; then
+        echo "k8s-container:${POD_IDENTIFIER}|${container}|active"
+
+        # Scan this container for log files
+        timeout 5s kubectl exec $NS_FLAG "$K8S_POD" -c "$container" -- sh -c \
+          'find /var/log /app/logs /app/log /logs /home /tmp /root -maxdepth 4 -name "*.log" -type f 2>/dev/null | head -50' \
+          2>/dev/null | while read -r filepath; do
+            STATUS="file"
+            echo "k8s-file:${POD_IDENTIFIER}|${container}|${filepath}|${STATUS}"
+        done
+      fi
+    done
+
+    # 2. Discover all init containers inside the pod (optional but helpful)
+    INIT_CONTAINERS=$(timeout 3s kubectl get pod "$K8S_POD" $NS_FLAG -o jsonpath='{.spec.initContainers[*].name}' 2>/dev/null)
+    for container in $INIT_CONTAINERS; do
+      if [ -n "$container" ]; then
+        echo "k8s-container:${POD_IDENTIFIER}|${container}|init"
+      fi
+    done
+    ;;
+
+  "read-pod-container")
+    # Streams a specific container log from inside a Kubernetes pod
+    # Usage: read-pod-container <namespace/podname> <container_name> [searchterm]
+    POD_IDENTIFIER="$ARG1"
+    CONTAINER_NAME="$ARG2"
+    SEARCH="$ARG3"
+
+    if [ -z "$POD_IDENTIFIER" ] || [ -z "$CONTAINER_NAME" ]; then
+      echo "[ERROR] Usage: read-pod-container <namespace/podname> <container_name>"
+      exit 1
+    fi
+
+    if [[ "$POD_IDENTIFIER" == *"/"* ]]; then
+      K8S_NS="${POD_IDENTIFIER%%/*}"
+      K8S_POD="${POD_IDENTIFIER#*/}"
+      NS_FLAG="-n $K8S_NS"
+    else
+      K8S_POD="$POD_IDENTIFIER"
+      NS_FLAG=""
+    fi
+
+    if [ -n "$SEARCH" ]; then
+      timeout 5s kubectl logs $NS_FLAG -f "$K8S_POD" -c "$CONTAINER_NAME" --tail 200 2>/dev/null | grep --line-buffered -i -e "$SEARCH" --
+    else
+      timeout 5s kubectl logs $NS_FLAG -f "$K8S_POD" -c "$CONTAINER_NAME" --tail 200 2>/dev/null
+    fi
+    exit 0
+    ;;
+
+  "read-pod-file")
+    # Streams a specific log file from inside a Kubernetes pod
+    # Usage: read-pod-file <namespace/podname> </path/to/file.log> [--container <container>] [searchterm]
+    POD_IDENTIFIER="${WORDS[1]}"
+    FILE_PATH="${WORDS[2]}"
+    CONTAINER_FLAG=""
+    SEARCH=""
+
+    # Parse arguments starting from index 3
+    for ((i=3; i<${#WORDS[@]}; i++)); do
+      if [[ "${WORDS[i]}" == "--container" || "${WORDS[i]}" == "-c" ]]; then
+        CONTAINER_FLAG="-c ${WORDS[i+1]}"
+        ((i++))
+      else
+        if [ -z "$SEARCH" ]; then
+          SEARCH="${WORDS[i]}"
+        else
+          SEARCH="$SEARCH ${WORDS[i]}"
+        fi
+      fi
+    done
+
+    if [ -z "$POD_IDENTIFIER" ] || [ -z "$FILE_PATH" ]; then
+      echo "[ERROR] Usage: read-pod-file <namespace/podname> </path/to/logfile> [--container <container>] [searchterm]"
+      exit 1
+    fi
+
+    # Security: block path traversal
+    if [[ "$FILE_PATH" == *".."* ]]; then
+      echo "[SECURITY ERROR] Path traversal detected."
+      exit 1
+    fi
+
+    if [[ "$POD_IDENTIFIER" == *"/"* ]]; then
+      K8S_NS="${POD_IDENTIFIER%%/*}"
+      K8S_POD="${POD_IDENTIFIER#*/}"
+      NS_FLAG="-n $K8S_NS"
+    else
+      K8S_POD="$POD_IDENTIFIER"
+      NS_FLAG=""
+    fi
+
+    if [ -n "$SEARCH" ]; then
+      timeout 5s kubectl exec $NS_FLAG "$K8S_POD" $CONTAINER_FLAG -- sh -c "tail -n 200 -f \"$FILE_PATH\" 2>/dev/null" 2>/dev/null | grep --line-buffered -i -e "$SEARCH" --
+    else
+      timeout 5s kubectl exec $NS_FLAG "$K8S_POD" $CONTAINER_FLAG -- sh -c "tail -n 200 -f \"$FILE_PATH\" 2>/dev/null" 2>/dev/null
+    fi
+    exit 0
+    ;;
+
+  "discover-container-files")
+    # Discovers log files inside a specific Docker container
+    # Usage: discover-container-files <container_name>
+    CONTAINER_NAME="$ARG1"
+
+    if [ -z "$CONTAINER_NAME" ]; then
+      echo "[ERROR] No container name provided"
+      exit 1
+    fi
+
+    # Find all .log files inside the docker container
+    timeout 5s docker exec "$CONTAINER_NAME" sh -c \
+      'find /var/log /app/logs /app/log /logs /home /tmp /root -maxdepth 4 -name "*.log" -type f 2>/dev/null | head -50' \
+      2>/dev/null | while read -r filepath; do
+        STATUS="file"
+        echo "docker-file:${CONTAINER_NAME}|${filepath}|${STATUS}"
+    done
+    ;;
+
+  "read-container-file")
+    # Streams a specific log file from inside a Docker container
+    # Usage: read-container-file <container_name> </path/to/file.log> [searchterm]
+    CONTAINER_NAME="$ARG1"
+    FILE_PATH="$ARG2"
+    SEARCH="$ARG3"
+
+    if [ -z "$CONTAINER_NAME" ] || [ -z "$FILE_PATH" ]; then
+      echo "[ERROR] Usage: read-container-file <container_name> </path/to/logfile>"
+      exit 1
+    fi
+
+    # Security: block path traversal
+    if [[ "$FILE_PATH" == *".."* ]]; then
+      echo "[SECURITY ERROR] Path traversal detected."
+      exit 1
+    fi
+
+    if [ -n "$SEARCH" ]; then
+      timeout 5s docker exec "$CONTAINER_NAME" sh -c "tail -n 200 -f \"$FILE_PATH\" 2>/dev/null" 2>/dev/null | grep --line-buffered -i -e "$SEARCH" --
+    else
+      timeout 5s docker exec "$CONTAINER_NAME" sh -c "tail -n 200 -f \"$FILE_PATH\" 2>/dev/null" 2>/dev/null
+    fi
+    exit 0
+    ;;
+
   "read-logs")
     LOG_TYPE="$ARG1"
     LOG_SOURCE="$ARG2"
@@ -135,7 +330,7 @@ case "$CMD" in
     fi
 
     case "$LOG_TYPE" in
-      "system"|"auth")
+      "system"|"auth"|"php"|"monitor"|"other")
         FILE_PATH="/var/log/$LOG_SOURCE"
         ;;
       "database")

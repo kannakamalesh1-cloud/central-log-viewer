@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
-import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon, Zap, Copy, Check } from 'lucide-react';
+import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon, Zap, Copy, Check, Folder, FolderOpen, Layers } from 'lucide-react';
 
 interface ServerData {
   id: number;
@@ -88,6 +88,48 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
 
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
 
+  // Expanded accordion state for K8s pods / Docker containers in the source list
+  const [expandedSourceItems, setExpandedSourceItems] = useState<Record<string, boolean>>({});
+  const toggleSourceItem = (key: string) =>
+    setExpandedSourceItems(prev => ({ ...prev, [key]: !prev[key] }));
+
+  // Sub-logs fetched per pod/container: key → LogSource[]
+  const [subLogs, setSubLogs] = useState<Record<string, { type: string; identifier: string; status: string | null }[]>>({});
+  const [loadingSubLogs, setLoadingSubLogs] = useState<Record<string, boolean>>({});
+
+  const fetchSubLogs = async (type: 'k8s' | 'docker', key: string) => {
+    if (subLogs[key] !== undefined || loadingSubLogs[key]) return; // already fetched
+    setLoadingSubLogs(prev => ({ ...prev, [key]: true }));
+    try {
+      if (type === 'k8s') {
+        const res = await fetch(`/api/servers/${selectedServerId}/pod-files?pod=${encodeURIComponent(key)}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setSubLogs(prev => ({ ...prev, [key]: data }));
+        }
+      } else {
+        const res = await fetch(`/api/servers/${selectedServerId}/container-files?container=${encodeURIComponent(key)}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setSubLogs(prev => ({ ...prev, [key]: data }));
+        }
+      }
+    } catch { }
+    finally { setLoadingSubLogs(prev => ({ ...prev, [key]: false })); }
+  };
+
+  // Server Groups state
+  interface ServerGroup { id: number; name: string; description: string; servers: { id: number; name: string; host: string }[]; }
+  const [serverGroups, setServerGroups] = useState<ServerGroup[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
+  const [showGroupPanel, setShowGroupPanel] = useState(false);
+  const [groupForm, setGroupForm] = useState({ name: '', description: '', serverIds: [] as number[] });
+  const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [groupSaving, setGroupSaving] = useState(false);
+  const [groupSaveMsg, setGroupSaveMsg] = useState<'ok' | 'err' | null>(null);
+  const [allServersForGroup, setAllServersForGroup] = useState<{ id: number; name: string; host: string }[]>([]);
+  const [groupServerSearchTerm, setGroupServerSearchTerm] = useState('');
+
   // Keep a stable ref to selectedServerId so the socket effect never needs to re-run
   const selectedServerIdRef = useRef<number | null>(selectedServerId);
   useEffect(() => { selectedServerIdRef.current = selectedServerId; }, [selectedServerId]);
@@ -124,6 +166,18 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
     fetch('/api/servers')
       .then(r => r.json())
       .then(data => setServers(data || []))
+      .catch(console.error);
+    // Also fetch grouped structure for the dropdown
+    fetch('/api/groups/with-servers')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setServerGroups(data); })
+      .catch(console.error);
+  };
+
+  const fetchAllServersForGroup = () => {
+    fetch('/api/servers')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setAllServersForGroup(data); })
       .catch(console.error);
   };
 
@@ -430,8 +484,102 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
     setSaveStatus('idle');
     setTestResult(null);
   };
-  const openUserPanel = () => { setShowUserPanel(true); setShowAddPanel(false); };
+  const openUserPanel = () => { setShowUserPanel(true); setShowAddPanel(false); setShowGroupPanel(false); };
   const closeUserPanel = () => { setShowUserPanel(false); };
+
+  const openGroupPanel = () => {
+    setGroupForm({ name: '', description: '', serverIds: [] });
+    setEditingGroupId(null);
+    setGroupSaveMsg(null);
+    setGroupServerSearchTerm('');
+    setShowGroupPanel(true);
+    setShowAddPanel(false);
+    setShowUserPanel(false);
+    fetchAllServersForGroup();
+  };
+  const closeGroupPanel = () => {
+    setShowGroupPanel(false);
+    setEditingGroupId(null);
+    setGroupSaveMsg(null);
+    setGroupServerSearchTerm('');
+  };
+
+  useEffect(() => {
+    if (serverGroups.length > 0) {
+      setExpandedGroups(prev => {
+        const next = { ...prev };
+        serverGroups.forEach((g: any) => {
+          if (next[g.id] === undefined) {
+            next[g.id] = true;
+          }
+        });
+        if (next[-1] === undefined) {
+          next[-1] = true;
+        }
+        return next;
+      });
+    }
+  }, [serverGroups]);
+
+  const handleGroupFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupForm.name) return;
+    setGroupSaving(true);
+    setGroupSaveMsg(null);
+    try {
+      const url = editingGroupId ? `/api/groups/${editingGroupId}` : '/api/groups';
+      const method = editingGroupId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(groupForm)
+      });
+      if (res.ok) {
+        setGroupSaveMsg('ok');
+        setGroupForm({ name: '', description: '', serverIds: [] });
+        setEditingGroupId(null);
+        fetchServers();
+        setTimeout(() => setGroupSaveMsg(null), 2500);
+      } else {
+        setGroupSaveMsg('err');
+      }
+    } catch {
+      setGroupSaveMsg('err');
+    } finally {
+      setGroupSaving(false);
+    }
+  };
+
+  const handleEditGroupClick = (group: any) => {
+    setEditingGroupId(group.id);
+    setGroupForm({
+      name: group.name,
+      description: group.description || '',
+      serverIds: group.servers.map((s: any) => s.id)
+    });
+  };
+
+  const handleDeleteGroup = async (groupId: number) => {
+    if (!confirm('Are you sure you want to delete this group? Servers in this group will not be deleted, they will simply be ungrouped.')) return;
+    try {
+      const res = await fetch(`/api/groups/${groupId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchServers();
+      }
+    } catch (e) {
+      console.error('Delete group failed', e);
+    }
+  };
+
+  const toggleGroupServerSelection = (serverId: number) => {
+    setGroupForm(prev => {
+      const alreadyChecked = prev.serverIds.includes(serverId);
+      const newIds = alreadyChecked 
+        ? prev.serverIds.filter(id => id !== serverId)
+        : [...prev.serverIds, serverId];
+      return { ...prev, serverIds: newIds };
+    });
+  };
 
   const toggleSection = (type: string) => {
     setExpandedSections(prev => ({ ...prev, [type]: !prev[type] }));
@@ -478,6 +626,13 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                   <KeyRound className="w-4 h-4" />
                 </button>
                 <button
+                  onClick={openGroupPanel}
+                  title="Server Groups"
+                  className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all flex items-center justify-center shadow-lg"
+                >
+                  <Folder className="w-4 h-4" />
+                </button>
+                <button
                   onClick={openPanel}
                   title="Add Server"
                   className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all shadow-lg"
@@ -509,16 +664,16 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 className={`w-full flex items-center justify-between bg-white border text-slate-800 text-sm rounded-xl p-3.5 transition-all shadow-sm hover:bg-slate-50 ${isServerDropdownOpen ? 'border-sky-500 ring-2 ring-sky-500/10' : 'border-slate-200'
                   }`}
               >
-                <span className="font-medium truncate max-w-[150px]">
+                <span className="font-medium truncate text-left mr-2 flex-1">
                   {selectedServerId ? (
                     servers.find(s => s.id === selectedServerId)?.name || "Server Selected"
                   ) : "Choose server..."}
                 </span>
-                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isServerDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
+                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${isServerDropdownOpen ? 'rotate-90' : 'rotate-0'}`} />
               </button>
 
               {isServerDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-[100] max-h-[400px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute top-full left-0 w-[272px] mt-2 bg-white border border-slate-200 rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12)] py-2 z-[100] max-h-[400px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="px-3 pb-2 pt-1 border-b border-slate-100 mb-1">
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -534,42 +689,121 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                     </div>
                   </div>
                   <div className="overflow-y-auto custom-scrollbar flex-1">
-                    {servers.filter(s =>
-                      s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
-                      s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
-                    ).length === 0 ? (
+                    {/* Groups */}
+                    {serverGroups.map(group => {
+                      const isExpanded = !!expandedGroups[group.id];
+                      const groupMatches = group.name.toLowerCase().includes(serverSearchTerm.toLowerCase());
+                      const matchedServers = groupMatches
+                        ? group.servers
+                        : group.servers.filter(s =>
+                            s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
+                            s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
+                          );
+
+                      if (serverSearchTerm && matchedServers.length === 0 && !groupMatches) return null;
+
+                      return (
+                        <div key={group.id} className="border-b border-slate-100 last:border-b-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedGroups(prev => ({ ...prev, [group.id]: !prev[group.id] }));
+                            }}
+                            className="w-full flex items-center justify-between px-4 py-2 bg-slate-50 hover:bg-slate-100/80 transition-all text-xs font-bold text-slate-500 uppercase tracking-wider"
+                          >
+                            <span className="flex items-center gap-2">
+                              {isExpanded ? <FolderOpen className="w-3.5 h-3.5 text-sky-500" /> : <Folder className="w-3.5 h-3.5 text-sky-400" />}
+                              {group.name} ({matchedServers.length})
+                            </span>
+                            <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          {isExpanded && (
+                            <div className="bg-white pl-2">
+                              {matchedServers.length === 0 ? (
+                                <p className="px-4 py-2 text-[10px] text-slate-400 italic">No servers in this group</p>
+                              ) : (
+                                matchedServers.map(s => (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); setServerSearchTerm(''); }}
+                                    className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 bg-sky-50/40 hover:bg-sky-100/60 border-b border-sky-500/5 last:border-b-0 ${selectedServerId === s.id ? 'text-sky-700 bg-sky-100/80 ring-1 ring-inset ring-sky-500/20' : 'text-slate-600'}`}
+                                  >
+                                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/20 border-sky-500/30' : 'bg-white border-sky-200'}`}>
+                                      <Server className={`w-3 h-3 ${selectedServerId === s.id ? 'text-sky-600' : 'text-sky-400'}`} />
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="font-semibold truncate leading-none text-slate-800 text-xs">{s.name}</span>
+                                      <span className="text-[9px] text-sky-600/60 font-mono mt-0.5 opacity-70 truncate">{s.host}</span>
+                                    </div>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Ungrouped Servers */}
+                    {(() => {
+                      const ungrouped = servers.filter(s => !serverGroups.some(g => g.servers.some(gs => gs.id === s.id)));
+                      const ungroupedMatches = 'ungrouped servers'.includes(serverSearchTerm.toLowerCase());
+                      const matchedUngrouped = ungroupedMatches
+                        ? ungrouped
+                        : ungrouped.filter(s =>
+                            s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
+                            s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
+                          );
+
+                      if (matchedUngrouped.length === 0 && !ungroupedMatches) return null;
+
+                      const isExpanded = !!expandedGroups[-1]; // use -1 for ungrouped
+                      return (
+                        <div className="border-b border-slate-100 last:border-b-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedGroups(prev => ({ ...prev, [-1]: !prev[-1] }));
+                            }}
+                            className="w-full flex items-center justify-between px-4 py-2 bg-slate-50 hover:bg-slate-100/80 transition-all text-xs font-bold text-slate-500 uppercase tracking-wider"
+                          >
+                            <span className="flex items-center gap-2">
+                              <Layers className="w-3.5 h-3.5 text-slate-400" />
+                              Ungrouped Servers ({matchedUngrouped.length})
+                            </span>
+                            <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          {isExpanded && (
+                            <div className="bg-white pl-2">
+                              {matchedUngrouped.map(s => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); setServerSearchTerm(''); }}
+                                  className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 bg-sky-50/40 hover:bg-sky-100/60 border-b border-sky-500/5 last:border-b-0 ${selectedServerId === s.id ? 'text-sky-700 bg-sky-100/80 ring-1 ring-inset ring-sky-500/20' : 'text-slate-600'}`}
+                                >
+                                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/20 border-sky-500/30' : 'bg-white border-sky-200'}`}>
+                                    <Server className={`w-3 h-3 ${selectedServerId === s.id ? 'text-sky-600' : 'text-sky-400'}`} />
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="font-semibold truncate leading-none text-slate-800 text-xs">{s.name}</span>
+                                    <span className="text-[9px] text-sky-600/60 font-mono mt-0.5 opacity-70 truncate">{s.host}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {servers.length === 0 && (
                       <div className="px-4 py-8 text-center">
                         <p className="text-[11px] text-slate-500 italic">No servers found</p>
-                        {serverSearchTerm && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setServerSearchTerm(''); }}
-                            className="mt-2 text-[10px] font-bold text-sky-600 hover:text-sky-500 uppercase tracking-tight"
-                          >
-                            Clear Search
-                          </button>
-                        )}
                       </div>
-                    ) : (
-                      servers
-                        .filter(s =>
-                          s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
-                          s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
-                        )
-                        .map(s => (
-                          <button
-                            key={s.id}
-                            onClick={() => { handleServerChange(s.id); setIsServerDropdownOpen(false); setServerSearchTerm(''); }}
-                            className={`w-full text-left px-4 py-2 text-sm transition-all flex items-center gap-3 bg-sky-50/40 hover:bg-sky-100/60 border-b border-sky-500/5 last:border-b-0 ${selectedServerId === s.id ? 'text-sky-700 bg-sky-100/80 ring-1 ring-inset ring-sky-500/20' : 'text-slate-600'}`}
-                          >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${selectedServerId === s.id ? 'bg-sky-500/20 border-sky-500/30' : 'bg-white border-sky-200'}`}>
-                              <Server className={`w-4 h-4 ${selectedServerId === s.id ? 'text-sky-600' : 'text-sky-400'}`} />
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="font-semibold truncate leading-none text-slate-800">{s.name}</span>
-                              <span className="text-[10px] text-sky-600/60 font-mono mt-1 opacity-70 truncate">{s.host}</span>
-                            </div>
-                          </button>
-                        ))
                     )}
                   </div>
                 </div>
@@ -687,11 +921,13 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                         system: { label: 'Core System', icon: Settings, color: 'text-zinc-400' },
                         auth: { label: 'Security Logs', icon: Shield, color: 'text-red-400' },
                         database: { label: 'Database Logs', icon: Database, color: 'text-yellow-400' },
+                        php: { label: 'PHP Services', icon: Cpu, color: 'text-purple-400' },
+                        monitor: { label: 'Monitor Daemons', icon: Monitor, color: 'text-pink-400' },
                         other: { label: 'Other Logs', icon: Activity, color: 'text-zinc-500' }
                       };
 
                       const sortedTypes = Object.keys(groups).sort((a, b) => {
-                        const order = ['system', 'auth', 'docker', 'k8s', 'nginx', 'apache', 'database'];
+                        const order = ['system', 'auth', 'docker', 'k8s', 'nginx', 'apache', 'database', 'php', 'monitor', 'other'];
                         const idxA = order.indexOf(a);
                         const idxB = order.indexOf(b);
                         if (idxA === -1 && idxB === -1) return a.localeCompare(b);
@@ -715,7 +951,8 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                 className="flex items-center justify-between w-full px-1 py-3 group hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
                               >
                                 <div className="flex items-center gap-2">
-                                  <div className={`w-1.5 h-3.5 bg-sky-500 rounded-full transition-transform group-hover:scale-y-125`} />
+                                  <div className={`w-1 h-3.5 bg-sky-500 rounded-full transition-transform group-hover:scale-y-125`} />
+                                  <Icon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                                   <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest leading-none">{config.label}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -761,7 +998,8 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                             >
                               <div className="flex items-center justify-between w-full">
                                 <div className="flex items-center gap-2">
-                                  <div className={`w-1.5 h-3.5 rounded-full transition-transform group-hover:scale-y-125 ${config.color.replace('text-', 'bg-')}`} />
+                                  <div className={`w-1 h-3.5 rounded-full transition-transform group-hover:scale-y-125 ${config.color.replace('text-', 'bg-')}`} />
+                                  <Icon className={`w-3.5 h-3.5 ${config.color} shrink-0`} />
                                   <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest leading-none">{config.label}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -783,7 +1021,11 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                 {displaySources.map((source, idx) => {
                                   let displayName = source.identifier;
                                   let suffix = '';
-                                  if (type === 'k8s') {
+                                  const isK8s = type === 'k8s';
+                                  const isDocker = type === 'docker';
+                                  const isAccordionType = isK8s || isDocker;
+
+                                  if (isK8s) {
                                     const nameOnly = source.identifier.split('/')[1] || source.identifier;
                                     const parts = nameOnly.split('-');
                                     if (parts.length > 2) {
@@ -792,58 +1034,173 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                     } else {
                                       displayName = nameOnly;
                                     }
+                                  } else if (isDocker) {
+                                    displayName = source.identifier;
                                   }
 
-                                  return (
-                                    <button
-                                      key={idx}
-                                      onClick={() => handleSourceSelect(source.identifier, source.type)}
-                                      className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between ${selectedSource === source.identifier
-                                        ? 'bg-sky-500/15 border-sky-500/40 text-sky-900 shadow-md shadow-sky-500/10'
-                                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-slate-900 hover:border-sky-300 shadow-sm'
-                                        }`}
-                                    >
-                                      <div className="flex items-center gap-3.5 min-w-0">
-                                        <div className={`p-2 rounded-lg border transition-colors ${selectedSource === source.identifier
-                                          ? 'bg-sky-500/20 border-sky-500/30 text-sky-600'
-                                          : `bg-white border-slate-200 ${config.color} opacity-70 group-hover:opacity-100`
-                                          }`}>
-                                          <Icon className="w-4 h-4" />
-                                        </div>
+                                  const itemKey = source.identifier;
+                                  const isItemExpanded = !!expandedSourceItems[itemKey];
+                                  const itemSubLogs = subLogs[itemKey] || [];
+                                  const isLoadingSub = !!loadingSubLogs[itemKey];
+                                  const childSources = itemSubLogs.filter((s: any) => s.identifier !== itemKey && s.identifier.startsWith(itemKey + '|'));
+                                  const isLive = /running|up|active|security|healthy/i.test(source.status?.toLowerCase() || '');
 
-                                        <div className="flex flex-col min-w-0">
-                                          <div className="flex items-center gap-2.5">
-                                            <span className="font-bold truncate text-[13.5px] leading-tight tracking-tight font-sans">
-                                              {displayName}
-                                            </span>
-                                            {(() => {
-                                              const status = source.status?.toLowerCase() || '';
-                                              // More flexible check for active states (including files)
-                                              const isLive = /running|up|active|security|healthy/i.test(status);
-                                              if (!isLive) return null;
-
-                                              return (
-                                                <div className="relative flex items-center gap-2">
-                                                  <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.9)] animate-pulse" />
-                                                  <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Live</span>
-                                                </div>
-                                              );
-                                            })()}
+                                  if (!isAccordionType) {
+                                    return (
+                                      <button
+                                        key={idx}
+                                        onClick={() => handleSourceSelect(source.identifier, source.type)}
+                                        className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between ${selectedSource === source.identifier
+                                          ? 'bg-sky-500/15 border-sky-500/40 text-sky-900 shadow-md shadow-sky-500/10'
+                                          : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-slate-900 hover:border-sky-300 shadow-sm'
+                                          }`}
+                                      >
+                                        <div className="flex items-center gap-3.5 min-w-0">
+                                          <div className={`p-2 rounded-lg border transition-colors ${selectedSource === source.identifier
+                                            ? 'bg-sky-500/20 border-sky-500/30 text-sky-600'
+                                            : `bg-white border-slate-200 ${config.color} opacity-70 group-hover:opacity-100`
+                                            }`}>
+                                            <Icon className="w-4 h-4" />
                                           </div>
-                                          {suffix && (
-                                            <span className="text-[10px] text-zinc-600 font-mono truncate opacity-60 mt-0.5">
-                                              {suffix.startsWith('-') ? suffix.substring(1) : suffix}
-                                            </span>
-                                          )}
+                                          <div className="flex flex-col min-w-0">
+                                            <div className="flex items-center gap-2.5">
+                                              <span className="font-bold truncate text-[13.5px] leading-tight tracking-tight font-sans">{displayName}</span>
+                                              {isLive && <div className="relative flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.9)] animate-pulse" /><span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Live</span></div>}
+                                            </div>
+                                            {suffix && <span className="text-[10px] text-zinc-600 font-mono truncate opacity-60 mt-0.5">{suffix.startsWith('-') ? suffix.substring(1) : suffix}</span>}
+                                          </div>
                                         </div>
+                                        {selectedSource === source.identifier ? <Activity className="w-4 h-4 text-sky-500 animate-pulse" /> : <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600" />}
+                                      </button>
+                                    );
+                                  }
+
+                                  // Accordion for K8s / Docker
+                                  return (
+                                    <div key={idx} className="flex flex-col gap-0.5">
+                                      <div
+                                        className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                                          selectedSource === source.identifier
+                                            ? 'bg-sky-500/15 border-sky-500/40 text-sky-900 shadow-md shadow-sky-500/10'
+                                            : isItemExpanded
+                                            ? 'bg-slate-200/60 border-slate-300 text-slate-800'
+                                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-slate-900 hover:border-sky-300 shadow-sm'
+                                        }`}
+                                        onClick={() => handleSourceSelect(source.identifier, source.type)}
+                                      >
+                                        <div className="flex items-center gap-3.5 min-w-0">
+                                          <div className={`p-2 rounded-lg border transition-colors ${
+                                            selectedSource === source.identifier || isItemExpanded
+                                              ? 'bg-sky-500/20 border-sky-500/30 text-sky-600'
+                                              : `bg-white border-slate-200 ${config.color} opacity-70 group-hover:opacity-100`
+                                          }`}>
+                                            <Icon className="w-4 h-4" />
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                            <div className="flex items-center gap-2.5">
+                                              <span className="font-bold truncate text-[13.5px] leading-tight tracking-tight font-sans">{displayName}</span>
+                                              {isLive && <div className="relative flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.9)] animate-pulse" /><span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Live</span></div>}
+                                            </div>
+                                            {suffix && <span className="text-[10px] text-zinc-600 font-mono truncate opacity-60 mt-0.5">{suffix.startsWith('-') ? suffix.substring(1) : suffix}</span>}
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className={`p-1.5 rounded-lg hover:bg-slate-300/40 text-slate-500 hover:text-slate-800 transition-all shrink-0 z-10 flex items-center justify-center ${
+                                            selectedSource === source.identifier ? 'hover:bg-sky-500/20 text-sky-700' : ''
+                                          }`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleSourceItem(itemKey);
+                                            if (!isItemExpanded) fetchSubLogs(type as 'k8s' | 'docker', itemKey);
+                                          }}
+                                          title={isItemExpanded ? "Collapse additional logs" : "Expand additional logs"}
+                                        >
+                                          {isLoadingSub ? (
+                                            <Loader2 className="w-3.5 h-3.5 text-sky-500 animate-spin" />
+                                          ) : (
+                                            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isItemExpanded ? 'rotate-180' : ''}`} />
+                                          )}
+                                        </button>
                                       </div>
 
-                                      {selectedSource === source.identifier ? (
-                                        <Activity className="w-4 h-4 text-sky-500 animate-pulse" />
-                                      ) : (
-                                        <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600" />
+                                      {isItemExpanded && (
+                                        <div className="ml-4 pl-3 border-l-2 border-sky-400/30 flex flex-col gap-0.5 animate-in slide-in-from-top-1 duration-200">
+                                          {(() => {
+                                            const hasContainers = childSources.some((s: any) => s.type === 'k8s-container');
+                                            if (hasContainers) return null;
+
+                                            return (
+                                              <button
+                                                onClick={() => handleSourceSelect(source.identifier, source.type)}
+                                                className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${selectedSource === source.identifier ? 'bg-sky-500/15 border-sky-500/30 text-sky-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-sky-50 hover:border-sky-300'}`}
+                                              >
+                                                <TerminalIcon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                                <div className="flex flex-col min-w-0">
+                                                  <span className="text-[12px] font-bold truncate">stdout / stderr</span>
+                                                  <span className="text-[9px] text-slate-400 font-mono">Live container output</span>
+                                                </div>
+                                                {selectedSource === source.identifier ? <Activity className="w-3.5 h-3.5 text-sky-500 animate-pulse ml-auto shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 ml-auto shrink-0 transition-opacity" />}
+                                              </button>
+                                            );
+                                          })()}
+
+                                          {childSources.map((child: any, ci: number) => {
+                                            if (child.type === 'k8s-container') {
+                                              return (
+                                                <button
+                                                  key={ci}
+                                                  onClick={() => handleSourceSelect(child.identifier, child.type)}
+                                                  className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${
+                                                    selectedSource === child.identifier
+                                                      ? 'bg-sky-500/15 border-sky-500/30 text-sky-800'
+                                                      : 'bg-white border-slate-200 text-slate-600 hover:bg-sky-50 hover:border-sky-300'
+                                                  }`}
+                                                >
+                                                  <TerminalIcon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                                                  <div className="flex flex-col min-w-0">
+                                                    <span className="text-[12px] font-bold truncate">Container: {child.containerName}</span>
+                                                    <span className="text-[9px] text-slate-400 font-mono">Live container output</span>
+                                                  </div>
+                                                  {selectedSource === child.identifier
+                                                    ? <Activity className="w-3.5 h-3.5 text-sky-500 animate-pulse ml-auto shrink-0" />
+                                                    : <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 ml-auto shrink-0 transition-opacity" />}
+                                                </button>
+                                              );
+                                            }
+
+                                            const logFilePath = child.filePath || child.identifier.split('|')[1] || child.identifier;
+                                            const shortName = logFilePath.split('/').pop() || logFilePath;
+                                            return (
+                                              <button
+                                                key={ci}
+                                                onClick={() => handleSourceSelect(child.identifier, child.type)}
+                                                className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${
+                                                  selectedSource === child.identifier
+                                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800'
+                                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-emerald-50 hover:border-emerald-300'
+                                                }`}
+                                              >
+                                                <BookOpen className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                <div className="flex flex-col min-w-0">
+                                                  <span className="text-[12px] font-bold truncate">{shortName}</span>
+                                                  <span className="text-[9px] text-slate-400 font-mono truncate">{logFilePath}</span>
+                                                </div>
+                                                {selectedSource === child.identifier
+                                                  ? <Activity className="w-3.5 h-3.5 text-emerald-500 animate-pulse ml-auto shrink-0" />
+                                                  : <ChevronRight className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 ml-auto shrink-0 transition-opacity" />}
+                                              </button>
+                                            );
+                                          })}
+
+                                          {childSources.length === 0 && !isLoadingSub && (
+                                            <p className="text-[10px] text-slate-400 italic pl-2 py-1.5">
+                                              No additional log files found inside this {isK8s ? 'pod' : 'container'}.
+                                            </p>
+                                          )}
+                                        </div>
                                       )}
-                                    </button>
+                                    </div>
                                   );
                                 })}
                               </div>
@@ -1216,6 +1573,191 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 </div>
               );
             })}
+          </div>
+        </div>
+      </div>
+
+      {/* Server Group Management Panel */}
+      <div className={`w-80 h-full absolute inset-0 flex flex-col bg-slate-50 backdrop-blur-2xl border-r border-slate-200 transition-transform duration-300 ${showGroupPanel ? 'translate-x-0' : 'translate-x-full'} z-[90]`}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-sky-500/20 rounded-xl border border-sky-500/30">
+              <Folder className="w-5 h-5 text-sky-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Server Groups</h2>
+              <p className="text-xs text-slate-500">Organize and control access</p>
+            </div>
+          </div>
+          <button onClick={closeGroupPanel} className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-6 custom-scrollbar">
+          <form onSubmit={handleGroupFormSubmit} className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                {editingGroupId ? 'Edit Server Group' : 'Create New Group'}
+              </h3>
+              {editingGroupId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingGroupId(null);
+                    setGroupForm({ name: '', description: '', serverIds: [] });
+                  }}
+                  className="text-[10px] font-bold text-sky-600 hover:underline"
+                >
+                  Cancel Edit
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Group Name</label>
+              <input
+                type="text"
+                required
+                value={groupForm.name}
+                onChange={e => setGroupForm({ ...groupForm, name: e.target.value })}
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
+                placeholder="e.g. Production, Staging"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Description</label>
+              <textarea
+                value={groupForm.description}
+                onChange={e => setGroupForm({ ...groupForm, description: e.target.value })}
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm resize-none h-16"
+                placeholder="Optional group description..."
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Servers</label>
+              {allServersForGroup.length > 0 && (
+                <div className="relative mb-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search servers..."
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl pl-9 pr-3 py-2 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/10 transition-all placeholder:text-slate-400 shadow-sm"
+                    value={groupServerSearchTerm}
+                    onChange={(e) => setGroupServerSearchTerm(e.target.value)}
+                  />
+                  {groupServerSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupServerSearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="bg-white border border-slate-200 rounded-xl p-3 max-h-40 overflow-y-auto custom-scrollbar flex flex-col gap-2">
+                {(() => {
+                  const filtered = allServersForGroup.filter(server =>
+                    server.name.toLowerCase().includes(groupServerSearchTerm.toLowerCase()) ||
+                    server.host.toLowerCase().includes(groupServerSearchTerm.toLowerCase())
+                  );
+                  if (filtered.length === 0) {
+                    return (
+                      <p className="text-[10px] text-slate-400 italic text-center py-2">
+                        {allServersForGroup.length === 0 ? "No servers available. Add a server first." : "No matching servers found."}
+                      </p>
+                    );
+                  }
+                  return filtered.map(server => (
+                    <label
+                      key={server.id}
+                      className="flex items-center justify-between w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-sky-100 hover:bg-sky-50/60 transition-all cursor-pointer select-none group/item"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={groupForm.serverIds.includes(server.id)}
+                          onChange={() => toggleGroupServerSelection(server.id)}
+                          className="rounded border-slate-300 text-sky-600 focus:ring-sky-500 w-3.5 h-3.5"
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-bold text-slate-700 group-hover/item:text-sky-900 truncate">{server.name}</span>
+                          <span className="text-[9px] font-mono text-slate-400 truncate">{server.host}</span>
+                        </div>
+                      </div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-sky-400 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 ml-2" />
+                    </label>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={groupSaving}
+              className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 shadow-md flex items-center justify-center gap-2"
+            >
+              {groupSaving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving Group...</span>
+                </>
+              ) : (
+                <span>{editingGroupId ? 'Update Group' : 'Create Group'}</span>
+              )}
+            </button>
+
+            {groupSaveMsg === 'ok' && (
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl p-3 text-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>Group saved successfully!</span>
+              </div>
+            )}
+            {groupSaveMsg === 'err' && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-xs">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>Failed to save group.</span>
+              </div>
+            )}
+          </form>
+
+          <div className="space-y-3">
+            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Configured Groups</h3>
+            {serverGroups.length === 0 ? (
+              <p className="text-[11px] text-slate-400 italic text-center py-4 bg-white border border-slate-100 rounded-xl">No groups created yet</p>
+            ) : (
+              serverGroups.map(g => (
+                <div key={g.id} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 group shadow-sm">
+                  <div className="flex flex-col min-w-0 flex-1 pr-2">
+                    <span className="text-xs font-bold text-slate-800 truncate" title={g.name}>{g.name}</span>
+                    {g.description && (
+                      <span className="text-[10px] text-slate-400 truncate mt-0.5" title={g.description}>{g.description}</span>
+                    )}
+                    <span className="text-[9px] text-sky-600 font-bold uppercase tracking-tight mt-1">{g.servers?.length || 0} servers</span>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                    <button
+                      onClick={() => handleEditGroupClick(g)}
+                      className="p-1 rounded text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-all"
+                      title="Edit group"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteGroup(g.id)}
+                      className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="Delete group"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

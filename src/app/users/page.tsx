@@ -6,7 +6,7 @@ import {
   Users, Shield, Activity, Search, Plus, Trash2, Save,
   ArrowLeft, Loader2, CheckCircle2, AlertCircle, Eye,
   Crown, UserCheck, Wifi, WifiOff, Calendar, Lock, X,
-  RefreshCw, ChevronDown
+  RefreshCw, ChevronDown, Folder
 } from "lucide-react";
 
 interface UserData {
@@ -15,6 +15,13 @@ interface UserData {
   role: string;
   createdAt: string;
   isOnline?: boolean;
+}
+
+interface ServerGroup {
+  id: number;
+  name: string;
+  description: string;
+  servers: { id: number; name: string; host: string }[];
 }
 
 const ROLE_CONFIG = {
@@ -68,6 +75,59 @@ export default function UsersPage() {
   const [filterRole, setFilterRole] = useState<"all" | "admin" | "viewer">("all");
   const [refreshing, setRefreshing] = useState(false);
 
+  // Group permission states
+  const [groups, setGroups] = useState<ServerGroup[]>([]);
+  const [selectedUserForGroups, setSelectedUserForGroups] = useState<UserData | null>(null);
+  const [assignedGroupIds, setAssignedGroupIds] = useState<number[]>([]);
+  const [loadingUserGroups, setLoadingUserGroups] = useState(false);
+  const [savingUserGroups, setSavingUserGroups] = useState(false);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await fetch("/api/groups/with-servers");
+      const data = await res.json();
+      if (Array.isArray(data)) setGroups(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const fetchUserGroups = async (userId: number) => {
+    setLoadingUserGroups(true);
+    try {
+      const res = await fetch(`/api/users/${userId}/groups`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setAssignedGroupIds(data.map((g: any) => g.id));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingUserGroups(false);
+    }
+  };
+
+  const handleSaveUserGroups = async () => {
+    if (!selectedUserForGroups) return;
+    setSavingUserGroups(true);
+    try {
+      const res = await fetch(`/api/users/${selectedUserForGroups.id}/groups`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupIds: assignedGroupIds })
+      });
+      if (res.ok) {
+        setSelectedUserForGroups(null);
+      } else {
+        alert("Failed to save group permissions");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingUserGroups(false);
+    }
+  };
+
   const fetchUsers = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -85,6 +145,7 @@ export default function UsersPage() {
       if (!d.authenticated || d.user.role !== "admin") { router.push("/"); return; }
       setCurrentUserEmail(d.user.email || "");
       fetchUsers();
+      fetchGroups();
     }).catch(() => router.push("/"));
   }, [fetchUsers, router]);
 
@@ -175,7 +236,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
+    <div className="h-screen overflow-y-auto bg-slate-50 font-sans">
       {/* Top Nav */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-4">
@@ -426,6 +487,20 @@ export default function UsersPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         {!isCurrent ? (
                           <>
+                            {user.role === "viewer" && (
+                              <button
+                                onClick={() => {
+                                  setSelectedUserForGroups(user);
+                                  fetchUserGroups(user.id);
+                                }}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-sky-500/20 bg-sky-50 hover:bg-sky-100 text-sky-600 text-[10px] font-black uppercase tracking-wide transition-all shadow-sm"
+                                title="Manage Server Group Access"
+                              >
+                                <Folder className="w-3.5 h-3.5" />
+                                <span>Groups</span>
+                              </button>
+                            )}
+
                             <div className="relative">
                               <select
                                 value={pendingRole ?? user.role}
@@ -509,6 +584,104 @@ export default function UsersPage() {
           </div>
         </div>
       </div>
+
+      {/* Server Group Access Modal */}
+      {selectedUserForGroups && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-sky-500/20 border border-sky-500/30 rounded-xl">
+                  <Folder className="w-5 h-5 text-sky-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Server Group Access</h3>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider truncate max-w-[200px]" title={selectedUserForGroups.email}>
+                    For {selectedUserForGroups.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedUserForGroups(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-900 transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 flex-1 overflow-y-auto max-h-[300px] flex flex-col gap-4">
+              <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                Assign which server groups this user is allowed to access. If no groups are assigned, the user will have an empty dashboard.
+              </p>
+
+              {loadingUserGroups ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2">
+                  <Loader2 className="w-6 h-6 text-sky-500 animate-spin" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Loading permissions...</span>
+                </div>
+              ) : groups.length === 0 ? (
+                <div className="text-center py-8 border border-dashed border-slate-200 rounded-xl">
+                  <p className="text-xs text-slate-400 italic">No groups defined. Create groups in the sidebar first.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {groups.map(g => {
+                    const isChecked = assignedGroupIds.includes(g.id);
+                    return (
+                      <label
+                        key={g.id}
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isChecked
+                            ? "bg-sky-50/50 border-sky-500/30 text-sky-900"
+                            : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                        }`}
+                      >
+                        <div className="flex flex-col min-w-0 pr-4">
+                          <span className="text-xs font-bold truncate">{g.name}</span>
+                          {g.description && <span className="text-[10px] text-slate-400 truncate mt-0.5">{g.description}</span>}
+                          <span className="text-[9px] font-mono text-sky-600/70 mt-1 uppercase tracking-tight font-black">
+                            {g.servers?.length || 0} servers
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setAssignedGroupIds(prev =>
+                              isChecked ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                            );
+                          }}
+                          className="rounded border-slate-300 text-sky-600 focus:ring-sky-500 w-4 h-4 shrink-0"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSelectedUserForGroups(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveUserGroups}
+                disabled={savingUserGroups || loadingUserGroups}
+                className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black uppercase tracking-widest shadow-md transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingUserGroups ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

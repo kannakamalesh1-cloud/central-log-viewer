@@ -2,6 +2,20 @@ const { Client } = require('ssh2');
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
+const crypto = require('crypto');
+
+// Calculate MD5 of the local log-wrapper.sh to check for updates on remote hosts
+let localMd5 = '';
+try {
+  const localWrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
+  if (fs.existsSync(localWrapperPath)) {
+    const fileBuffer = fs.readFileSync(localWrapperPath);
+    localMd5 = crypto.createHash('md5').update(fileBuffer).digest('hex');
+  }
+} catch (e) {
+  console.error("Failed to compute local log-wrapper.sh MD5:", e);
+}
 
 class SSHController {
   constructor(socket) {
@@ -100,7 +114,12 @@ class SSHController {
 
   // Uses Auto Detection by calling 'discover-sources'
   async discoverLogSources(serverConfig, type = '') {
-    const cmd = type ? `discover-sources ${type}` : 'discover-sources';
+    let cmd = type ? `discover-sources ${type}` : 'discover-sources';
+    if (type.startsWith('pod-files ')) {
+      cmd = `discover-pod-files ${type.substring(10)}`;
+    } else if (type.startsWith('container-files ')) {
+      cmd = `discover-container-files ${type.substring(16)}`;
+    }
     const privateKey = SSHController.sanitizeKey(serverConfig.privateKey);
 
     if (SSHController.isLocal(serverConfig.host)) {
@@ -115,7 +134,14 @@ class SSHController {
                 .filter(Boolean)
                 .map(s => {
                     const [type, ...rest] = s.split(':');
-                    const [identifier, status] = rest.join(':').split('|');
+                    const remaining = rest.join(':');
+                    const lastPipeIndex = remaining.lastIndexOf('|');
+                    let identifier = remaining;
+                    let status = null;
+                    if (lastPipeIndex !== -1) {
+                        identifier = remaining.substring(0, lastPipeIndex);
+                        status = remaining.substring(lastPipeIndex + 1);
+                    }
                     return { type, identifier, status: status || null };
                 });
              resolve(list);
@@ -126,34 +152,36 @@ class SSHController {
     return new Promise((resolve, reject) => {
       const conn = new Client();
       conn.on('ready', () => {
-        // Proactively check and upload log-wrapper.sh if missing on the remote server
-        conn.exec('ls ./log-wrapper.sh', (err, stream) => {
-          let hasWrapper = false;
-          if (!err && stream) {
-            stream.on('data', () => hasWrapper = true);
-            stream.on('close', () => {
-              if (!hasWrapper) {
-                conn.sftp((sftpErr, sftp) => {
-                  if (sftpErr) return executeDiscovery();
-                  const localWrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
-                  sftp.fastPut(localWrapperPath, './log-wrapper.sh', {}, (putErr) => {
-                    if (putErr) return executeDiscovery();
-                    conn.exec('chmod +x ./log-wrapper.sh', (chmodErr, chmodStream) => {
-                      if (chmodErr) return executeDiscovery();
-                      chmodStream.on('close', () => {
-                        executeDiscovery();
-                      });
-                    });
-                  });
-                });
-              } else {
-                executeDiscovery();
-              }
-            });
-          } else {
-            executeDiscovery();
-          }
+        // Proactively verify the MD5 checksum of the remote log-wrapper.sh against the local version
+        conn.exec('md5sum ./log-wrapper.sh 2>/dev/null', (err, stream) => {
+          let output = '';
+          if (err || !stream) return doUpload();
+          stream.on('data', (data) => output += data.toString());
+          stream.on('close', () => {
+            const remoteHash = output.trim().split(/\s+/)[0];
+            if (remoteHash && remoteHash === localMd5) {
+              executeDiscovery();
+            } else {
+              doUpload();
+            }
+          });
         });
+
+        function doUpload() {
+          conn.sftp((sftpErr, sftp) => {
+            if (sftpErr) return executeDiscovery();
+            const localWrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
+            sftp.fastPut(localWrapperPath, './log-wrapper.sh', {}, (putErr) => {
+              if (putErr) return executeDiscovery();
+              conn.exec('chmod +x ./log-wrapper.sh', (chmodErr, chmodStream) => {
+                if (chmodErr) return executeDiscovery();
+                chmodStream.on('close', () => {
+                  executeDiscovery();
+                });
+              });
+            });
+          });
+        }
 
         function executeDiscovery() {
           conn.exec(cmd, (err, stream) => {
@@ -169,7 +197,14 @@ class SSHController {
                   .filter(Boolean)
                   .map(s => {
                       const [type, ...rest] = s.split(':');
-                      const [identifier, status] = rest.join(':').split('|');
+                      const remaining = rest.join(':');
+                      const lastPipeIndex = remaining.lastIndexOf('|');
+                      let identifier = remaining;
+                      let status = null;
+                      if (lastPipeIndex !== -1) {
+                          identifier = remaining.substring(0, lastPipeIndex);
+                          status = remaining.substring(lastPipeIndex + 1);
+                      }
                       return { type, identifier, status: status || null };
                   });
 
@@ -190,7 +225,14 @@ class SSHController {
                            .filter(Boolean)
                            .map(s => {
                                const [type, ...rest] = s.split(':');
-                               const [identifier, status] = rest.join(':').split('|');
+                               const remaining = rest.join(':');
+                               const lastPipeIndex = remaining.lastIndexOf('|');
+                               let identifier = remaining;
+                               let status = null;
+                               if (lastPipeIndex !== -1) {
+                                   identifier = remaining.substring(0, lastPipeIndex);
+                                   status = remaining.substring(lastPipeIndex + 1);
+                               }
                                return { type, identifier, status: status || null };
                            });
                         resolve(list2);
