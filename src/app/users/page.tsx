@@ -309,7 +309,7 @@ export default function UsersPage() {
                     value={addForm.email}
                     onChange={e => setAddForm({ ...addForm, email: e.target.value })}
                     placeholder="user@company.com"
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-400 focus:bg-white transition-all placeholder:text-slate-300"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:bg-white transition-all placeholder:text-slate-300"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -322,7 +322,7 @@ export default function UsersPage() {
                     value={addForm.password}
                     onChange={e => setAddForm({ ...addForm, password: e.target.value })}
                     placeholder="Leave blank for Microsoft SSO"
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-400 focus:bg-white transition-all placeholder:text-slate-300"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:bg-white transition-all placeholder:text-slate-300"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -330,7 +330,7 @@ export default function UsersPage() {
                   <select
                     value={addForm.role}
                     onChange={e => setAddForm({ ...addForm, role: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-400 focus:bg-white transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:bg-white transition-all"
                   >
                     <option value="viewer">Viewer — Read Only</option>
                     <option value="admin">Admin — Full Control</option>
@@ -351,7 +351,7 @@ export default function UsersPage() {
                 <button
                   type="submit"
                   disabled={adding}
-                  className="w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-black uppercase tracking-widest text-xs py-3 rounded-xl transition-all shadow-md shadow-sky-500/20 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-black uppercase tracking-widest text-xs py-3 rounded-xl transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50"
                 >
                   {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   Add User
@@ -414,7 +414,7 @@ export default function UsersPage() {
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Search by email..."
-                    className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl pl-9 pr-4 py-2 outline-none focus:border-sky-400 transition-all placeholder:text-slate-300"
+                    className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl pl-9 pr-4 py-2 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder:text-slate-300"
                   />
                   {search && (
                     <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -522,7 +522,7 @@ export default function UsersPage() {
                               <button
                                 onClick={() => handleSaveRole(user)}
                                 disabled={savingId === user.id}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black uppercase tracking-wide transition-all shadow-md shadow-sky-500/20 disabled:opacity-50"
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-[10px] font-black uppercase tracking-wide transition-all shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50"
                               >
                                 {savingId === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                                 Save
@@ -632,11 +632,10 @@ export default function UsersPage() {
                     return (
                       <label
                         key={g.id}
-                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer ${
-                          isChecked
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer ${isChecked
                             ? "bg-sky-50/50 border-sky-500/30 text-sky-900"
                             : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
-                        }`}
+                          }`}
                       >
                         <div className="flex flex-col min-w-0 pr-4">
                           <span className="text-xs font-bold truncate">{g.name}</span>
@@ -673,7 +672,7 @@ export default function UsersPage() {
               <button
                 onClick={handleSaveUserGroups}
                 disabled={savingUserGroups || loadingUserGroups}
-                className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black uppercase tracking-widest shadow-md transition-all disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black uppercase tracking-widest shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-50 flex items-center gap-2"
               >
                 {savingUserGroups ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                 <span>Save Changes</span>

@@ -87,6 +87,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
   const [copied, setCopied] = useState(false);
 
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
+  const [isAdminDropdownOpen, setIsAdminDropdownOpen] = useState(false);
 
   // Expanded accordion state for K8s pods / Docker containers in the source list
   const [expandedSourceItems, setExpandedSourceItems] = useState<Record<string, boolean>>({});
@@ -134,8 +135,27 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
   const selectedServerIdRef = useRef<number | null>(selectedServerId);
   useEffect(() => { selectedServerIdRef.current = selectedServerId; }, [selectedServerId]);
 
+  const serversRef = useRef<ServerData[]>(servers);
+  useEffect(() => { serversRef.current = servers; }, [servers]);
+
   // Drag to scroll state
   const scrollRef = useRef<HTMLDivElement>(null);
+  const adminDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (adminDropdownRef.current && !adminDropdownRef.current.contains(e.target as Node)) {
+        setIsAdminDropdownOpen(false);
+      }
+    };
+    if (isAdminDropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isAdminDropdownOpen]);
+
   const [isGrabDragging, setIsGrabDragging] = useState(false);
   const [grabStartY, setGrabStartY] = useState(0);
   const [grabScrollTop, setGrabScrollTop] = useState(0);
@@ -242,7 +262,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
         setSourceError('Network error connecting to discovery API');
       })
       .finally(() => setLoadingSources(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable reference — reads server from ref, not closure
 
   useEffect(() => {
@@ -259,16 +279,26 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
 
     socket.on('docker_event', (event: any) => {
       // Read the latest serverId via ref — no stale closure, no socket reconnect needed
-      if (selectedServerIdRef.current) {
-        console.log('Real-time Docker event received:', event.action, event.name);
-        fetchSources();
+      const currentId = selectedServerIdRef.current;
+      if (currentId) {
+        const currentServer = serversRef.current.find((s: any) => s.id === currentId);
+        const isLocal = currentServer && (
+          currentServer.host === 'localhost' ||
+          currentServer.host === '127.0.0.1' ||
+          currentServer.host === 'local' ||
+          currentServer.host === '::1'
+        );
+        if (isLocal) {
+          console.log('Real-time Docker event received for local system:', event.action, event.name);
+          fetchSources();
+        }
       }
     });
 
     return () => {
       socket.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps: socket is intentionally created only once
 
   // Sync selectedSource with prop from parent
@@ -574,7 +604,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
   const toggleGroupServerSelection = (serverId: number) => {
     setGroupForm(prev => {
       const alreadyChecked = prev.serverIds.includes(serverId);
-      const newIds = alreadyChecked 
+      const newIds = alreadyChecked
         ? prev.serverIds.filter(id => id !== serverId)
         : [...prev.serverIds, serverId];
       return { ...prev, serverIds: newIds };
@@ -617,29 +647,66 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
               <HelpCircle className="w-4 h-4" />
             </button>
             {userRole === 'admin' && (
-              <>
+              <div
+                className="relative"
+                ref={adminDropdownRef}
+              >
                 <button
-                  onClick={() => router.push('/users')}
-                  className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all flex items-center justify-center"
-                  title="User Permissions"
+                  onClick={() => setIsAdminDropdownOpen(!isAdminDropdownOpen)}
+                  className={`p-1.5 rounded-xl border transition-all flex items-center justify-center ${isAdminDropdownOpen
+                      ? 'bg-sky-500/20 border-sky-500/30 text-sky-600 shadow-inner'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-sky-500/20 hover:border-sky-500/30 hover:text-sky-600'
+                    }`}
+                  title="Admin Settings"
                 >
-                  <KeyRound className="w-4 h-4" />
+                  <Settings className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={openGroupPanel}
-                  title="Server Groups"
-                  className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all flex items-center justify-center shadow-lg"
-                >
-                  <Folder className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={openPanel}
-                  title="Add Server"
-                  className="p-1.5 rounded-xl bg-sky-500/20 border border-sky-500/30 hover:bg-sky-500/30 text-sky-600 transition-all shadow-lg"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </>
+                {isAdminDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2.5 w-56 bg-white border border-slate-200/80 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.08)] p-2.5 z-[100] animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col gap-1">
+                    <div className="px-2.5 py-1.5 mb-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                        Control Panel
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsAdminDropdownOpen(false);
+                        router.push('/users');
+                      }}
+                      className="w-full px-3 py-2.5 text-left text-xs font-bold text-slate-600 hover:bg-sky-55/70 hover:text-sky-700 rounded-xl transition-all flex items-center gap-3 group"
+                    >
+                      <div className="p-1.5 bg-slate-100 group-hover:bg-sky-500/15 text-slate-500 group-hover:text-sky-600 rounded-lg transition-all">
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </div>
+                      <span>User Permissions</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsAdminDropdownOpen(false);
+                        openGroupPanel();
+                      }}
+                      className="w-full px-3 py-2.5 text-left text-xs font-bold text-slate-600 hover:bg-sky-55/70 hover:text-sky-700 rounded-xl transition-all flex items-center gap-3 group"
+                    >
+                      <div className="p-1.5 bg-slate-100 group-hover:bg-sky-500/15 text-slate-500 group-hover:text-sky-600 rounded-lg transition-all">
+                        <Folder className="w-3.5 h-3.5" />
+                      </div>
+                      <span>Server Groups</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsAdminDropdownOpen(false);
+                        openPanel();
+                      }}
+                      className="w-full px-3 py-2.5 text-left text-xs font-bold text-slate-600 hover:bg-sky-55/70 hover:text-sky-700 rounded-xl transition-all flex items-center gap-3 group"
+                    >
+                      <div className="p-1.5 bg-slate-100 group-hover:bg-sky-500/15 text-slate-500 group-hover:text-sky-600 rounded-lg transition-all">
+                        <Plus className="w-3.5 h-3.5" />
+                      </div>
+                      <span>Add Server</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -653,7 +720,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
         </button>
 
         {/* Step 1 — Server */}
-        <div className="mb-6 flex flex-col gap-2">
+        <div className="mb-7 flex flex-col gap-2.5">
           <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
             1. Select Target Server
           </label>
@@ -696,9 +763,9 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                       const matchedServers = groupMatches
                         ? group.servers
                         : group.servers.filter(s =>
-                            s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
-                            s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
-                          );
+                          s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
+                          s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
+                        );
 
                       if (serverSearchTerm && matchedServers.length === 0 && !groupMatches) return null;
 
@@ -753,9 +820,9 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                       const matchedUngrouped = ungroupedMatches
                         ? ungrouped
                         : ungrouped.filter(s =>
-                            s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
-                            s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
-                          );
+                          s.name.toLowerCase().includes(serverSearchTerm.toLowerCase()) ||
+                          s.host.toLowerCase().includes(serverSearchTerm.toLowerCase())
+                        );
 
                       if (matchedUngrouped.length === 0 && !ungroupedMatches) return null;
 
@@ -814,7 +881,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 <button
                   type="button"
                   onClick={() => handleEditClick(selectedServerId)}
-                  className="p-3 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-sky-600 hover:border-sky-500/30 transition-all flex items-center justify-center shadow-sm"
+                  className="p-3.5 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-sky-600 hover:border-sky-500/30 transition-all flex items-center justify-center shadow-sm"
                   title="Edit server"
                 >
                   <Settings className="w-4 h-4" />
@@ -828,7 +895,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                       setConfirmDelete(selectedServerId);
                     }
                   }}
-                  className={`p-3 rounded-xl border transition-all flex items-center justify-center ${confirmDelete === selectedServerId
+                  className={`p-3.5 rounded-xl border transition-all flex items-center justify-center ${confirmDelete === selectedServerId
                     ? 'bg-red-500/20 border-red-500/50 text-red-400 font-bold text-[10px] uppercase min-w-[80px]'
                     : 'bg-white border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-500/30 shadow-sm'
                     }`}
@@ -1079,21 +1146,19 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                   return (
                                     <div key={idx} className="flex flex-col gap-0.5">
                                       <div
-                                        className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
-                                          selectedSource === source.identifier
+                                        className={`group w-full text-left px-3 py-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${selectedSource === source.identifier
                                             ? 'bg-sky-500/15 border-sky-500/40 text-sky-900 shadow-md shadow-sky-500/10'
                                             : isItemExpanded
-                                            ? 'bg-slate-200/60 border-slate-300 text-slate-800'
-                                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-slate-900 hover:border-sky-300 shadow-sm'
-                                        }`}
+                                              ? 'bg-slate-200/60 border-slate-300 text-slate-800'
+                                              : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-sky-50 hover:text-slate-900 hover:border-sky-300 shadow-sm'
+                                          }`}
                                         onClick={() => handleSourceSelect(source.identifier, source.type)}
                                       >
                                         <div className="flex items-center gap-3.5 min-w-0">
-                                          <div className={`p-2 rounded-lg border transition-colors ${
-                                            selectedSource === source.identifier || isItemExpanded
+                                          <div className={`p-2 rounded-lg border transition-colors ${selectedSource === source.identifier || isItemExpanded
                                               ? 'bg-sky-500/20 border-sky-500/30 text-sky-600'
                                               : `bg-white border-slate-200 ${config.color} opacity-70 group-hover:opacity-100`
-                                          }`}>
+                                            }`}>
                                             <Icon className="w-4 h-4" />
                                           </div>
                                           <div className="flex flex-col min-w-0">
@@ -1106,9 +1171,8 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                         </div>
                                         <button
                                           type="button"
-                                          className={`p-1.5 rounded-lg hover:bg-slate-300/40 text-slate-500 hover:text-slate-800 transition-all shrink-0 z-10 flex items-center justify-center ${
-                                            selectedSource === source.identifier ? 'hover:bg-sky-500/20 text-sky-700' : ''
-                                          }`}
+                                          className={`p-1.5 rounded-lg hover:bg-slate-300/40 text-slate-500 hover:text-slate-800 transition-all shrink-0 z-10 flex items-center justify-center ${selectedSource === source.identifier ? 'hover:bg-sky-500/20 text-sky-700' : ''
+                                            }`}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             toggleSourceItem(itemKey);
@@ -1151,11 +1215,10 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                                 <button
                                                   key={ci}
                                                   onClick={() => handleSourceSelect(child.identifier, child.type)}
-                                                  className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${
-                                                    selectedSource === child.identifier
+                                                  className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${selectedSource === child.identifier
                                                       ? 'bg-sky-500/15 border-sky-500/30 text-sky-800'
                                                       : 'bg-white border-slate-200 text-slate-600 hover:bg-sky-50 hover:border-sky-300'
-                                                  }`}
+                                                    }`}
                                                 >
                                                   <TerminalIcon className="w-3.5 h-3.5 text-sky-500 shrink-0" />
                                                   <div className="flex flex-col min-w-0">
@@ -1175,11 +1238,10 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                                               <button
                                                 key={ci}
                                                 onClick={() => handleSourceSelect(child.identifier, child.type)}
-                                                className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${
-                                                  selectedSource === child.identifier
+                                                className={`group w-full text-left px-3 py-2.5 rounded-xl border transition-all flex items-center gap-2.5 ${selectedSource === child.identifier
                                                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800'
                                                     : 'bg-white border-slate-200 text-slate-600 hover:bg-emerald-50 hover:border-emerald-300'
-                                                }`}
+                                                  }`}
                                               >
                                                 <BookOpen className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                                 <div className="flex flex-col min-w-0">
@@ -1324,7 +1386,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
 
             <div className="flex flex-col gap-4">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Setup Steps Details</span>
-              
+
               <div className="space-y-4">
                 <div className="flex gap-3">
                   <div className="w-5 h-5 rounded-full bg-slate-200/60 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">1</div>
@@ -1332,7 +1394,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                     Log into your remote server as a user with <code className="text-slate-700 bg-slate-200/60 px-1 py-0.5 rounded font-mono text-[10px]">sudo</code> access.
                   </p>
                 </div>
-                
+
                 <div className="flex gap-3">
                   <div className="w-5 h-5 rounded-full bg-slate-200/60 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">2</div>
                   <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
@@ -1360,7 +1422,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 value={form.name}
                 onChange={handleFormChange}
                 placeholder="e.g. Production Web"
-                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 shadow-sm"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder:text-slate-400 shadow-sm"
               />
             </div>
 
@@ -1372,7 +1434,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 value={form.host}
                 onChange={handleFormChange}
                 placeholder="e.g. 192.168.1.100 or server.com"
-                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder:text-slate-400 font-mono shadow-sm"
               />
             </div>
 
@@ -1388,7 +1450,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                   type="number"
                   min="1"
                   max="65535"
-                  className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder:text-slate-400 font-mono shadow-sm"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -1398,7 +1460,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                   value={form.username}
                   onChange={handleFormChange}
                   placeholder="ubuntu"
-                  className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono shadow-sm"
+                  className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder:text-slate-400 font-mono shadow-sm"
                 />
               </div>
             </div>
@@ -1423,7 +1485,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 onChange={handleFormChange}
                 placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
                 rows={6}
-                className={`w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400 font-mono resize-none leading-relaxed shadow-sm ${!showKey ? 'text-security-disc' : ''}`}
+                className={`w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder:text-slate-400 font-mono resize-none leading-relaxed shadow-sm ${!showKey ? 'text-security-disc' : ''}`}
                 style={!showKey ? { WebkitTextSecurity: 'disc' } as React.CSSProperties : {}}
               />
               <p className="text-[10px] text-slate-400 leading-relaxed">
@@ -1470,7 +1532,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
             <button
               type="submit"
               disabled={saving}
-              className="mt-2 w-full flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-black uppercase tracking-widest py-3.5 rounded-xl shadow-lg shadow-sky-500/20 transition-all disabled:opacity-50"
+              className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-black uppercase tracking-widest py-3.5 rounded-xl shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               {editingId ? 'Update Server' : 'Save Server'}
@@ -1621,7 +1683,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                 required
                 value={groupForm.name}
                 onChange={e => setGroupForm({ ...groupForm, name: e.target.value })}
-                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all shadow-sm"
                 placeholder="e.g. Production, Staging"
               />
             </div>
@@ -1631,7 +1693,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
               <textarea
                 value={groupForm.description}
                 onChange={e => setGroupForm({ ...groupForm, description: e.target.value })}
-                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 shadow-sm resize-none h-16"
+                className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all shadow-sm resize-none h-16"
                 placeholder="Optional group description..."
               />
             </div>
@@ -1699,7 +1761,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
             <button
               type="submit"
               disabled={groupSaving}
-              className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 shadow-md flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 flex items-center justify-center gap-2"
             >
               {groupSaving ? (
                 <>
@@ -1812,7 +1874,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                   </div>
                   <div className="flex gap-4">
                     <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">3</div>
-                    <p className="text-xs text-slate-500 font-medium">Test connection. Ensure <span className="text-cyan-400">log-wrapper.sh</span> exists on the target node.</p>
+                    <p className="text-xs text-slate-500 font-medium">Test connection. The app automatically deploys and verifies <span className="text-cyan-400">log-wrapper.sh</span> integrity using MD5 sync.</p>
                   </div>
                 </div>
               </section>
@@ -1916,22 +1978,22 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                       </p>
                       <div className="space-y-3">
                         <div>
-                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">A. Enable Scripts</p>
-                           <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
-                             Set-ExecutionPolicy RemoteSigned -Force
-                           </code>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">A. Enable Scripts</p>
+                          <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                            Set-ExecutionPolicy RemoteSigned -Force
+                          </code>
                         </div>
                         <div>
-                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">B. Restrict Key</p>
-                           <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
-                             icacls "C:\Users\username\.ssh\authorized_keys" /inheritance:r
-                           </code>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">B. Restrict Key</p>
+                          <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                            icacls "C:\Users\username\.ssh\authorized_keys" /inheritance:r
+                          </code>
                         </div>
                         <div>
-                           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">C. Grant Access</p>
-                           <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
-                             icacls "C:\Users\username\.ssh\authorized_keys" /grant:r "username:F"
-                           </code>
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">C. Grant Access</p>
+                          <code className="text-[9px] text-sky-600 bg-slate-50 p-2 rounded block font-mono border border-slate-100 break-all">
+                            icacls "C:\Users\username\.ssh\authorized_keys" /grant:r "username:F"
+                          </code>
                         </div>
                       </div>
                     </div>
@@ -1944,19 +2006,48 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                   <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
                     <Users className="w-4 h-4 text-blue-400" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">User Management</h3>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Access & User Control</h3>
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-3">
-                  Click the <span className="text-blue-400">Users</span> button to manage operators.
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-4">
+                  Configure access levels, server groups, and user accounts via the <span className="font-semibold text-slate-700 bg-slate-100 px-1 py-0.5 rounded">Admin Settings</span> (gear icon next to the user guide):
                 </p>
-                <ul className="space-y-2">
-                  <li className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <Shield className="w-3 h-3 text-red-500" /> Admins: Full control over nodes & users.
-                  </li>
-                  <li className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    <Activity className="w-3 h-3 text-green-500" /> Viewers: Can stream logs but cannot modify nodes.
-                  </li>
-                </ul>
+
+                <div className="space-y-4">
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-sky-600">A</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-0.5">User Permissions Panel</p>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Create user accounts, update security roles (Admin vs. Viewer), or restrict Viewer access to specific server groups.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-sky-600">B</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-0.5">Server Group Controls</p>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Organize remote nodes into logical server groups to partition access visibility.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-sky-600">C</div>
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-700 mb-0.5">Secure Role Levels</p>
+                      <ul className="space-y-1.5 mt-1">
+                        <li className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                          <Shield className="w-3 h-3 text-red-500 shrink-0" /> Admins: Full permissions over nodes, groups, and users.
+                        </li>
+                        <li className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                          <Activity className="w-3 h-3 text-green-500 shrink-0" /> Viewers: Stream logs only for assigned server groups.
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               <section className="bg-white border border-slate-200 rounded-[24px] p-5">
@@ -2016,9 +2107,21 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                     </p>
                   </div>
                   <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Log Auto-Discovery:</span> Automatically scans remote servers to group log files (PHP, Nginx, System, etc.) dynamically.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">
                       <span className="text-slate-900">Stream Buffer:</span> Pause the live stream at any time to inspect specific events without losing incoming data.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Watch Alerts:</span> Type keywords in the <span className="font-semibold text-slate-700 bg-slate-100 px-1 py-0.5 rounded">Watch</span> slot to highlight them in red and track session hits.
                     </p>
                   </div>
                   <div className="flex items-start gap-3">
@@ -2053,9 +2156,21 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                     </p>
                   </div>
                   <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Log Auto-Discovery:</span> Scans remote servers dynamically to auto-group log files (PHP Services, Monitor Daemons, etc.).
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">
                       <span className="text-slate-900">Stream Buffer:</span> Pause the live stream at any time to inspect specific events without losing incoming data.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      <span className="text-slate-900">Watch Alerts:</span> Type words in the <span className="font-semibold text-slate-700 bg-slate-100 px-1 py-0.5 rounded">Watch</span> slot to highlight them in red and track session hits.
                     </p>
                   </div>
                   <div className="flex items-start gap-3">
@@ -2083,7 +2198,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
               </div>
               <div className="flex gap-4">
                 <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">2</div>
-                <p className="text-xs text-slate-500 font-medium">Browse through categories like <span className="text-cyan-400">Docker</span>, <span className="text-sky-600">System</span>, or <span className="text-blue-400">Auth</span>.</p>
+                <p className="text-xs text-slate-500 font-medium">Browse through auto-discovered groups like <span className="text-purple-500 font-semibold">PHP Services</span>, <span className="text-pink-500 font-semibold">Monitor Daemons</span>, or <span className="text-cyan-400">Docker</span>.</p>
               </div>
               <div className="flex gap-4">
                 <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">3</div>
@@ -2091,7 +2206,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
               </div>
               <div className="flex gap-4">
                 <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">4</div>
-                <p className="text-xs text-slate-500 font-medium">Use the <span className="text-orange-400">Search</span> bar or <span className="text-cyan-400">Pause</span> button in the terminal header to interact.</p>
+                <p className="text-xs text-slate-500 font-medium">Use the <span className="text-orange-400">Search</span> bar, the <span className="text-sky-500 font-semibold">Watch</span> keyword input, or the <span className="text-cyan-400">Pause</span> button to interact.</p>
               </div>
             </div>
           </section>

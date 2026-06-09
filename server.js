@@ -282,8 +282,8 @@ app.prepare().then(async () => {
         }
       }
 
-      // Strict Input Sanitization - Allow metadata separators but forbid path traversal (..)
-      const safeRegex = /^(?!.*\.\.)[a-zA-Z0-9_\.\/|: -]+$/;
+      // Strict Input Sanitization - Allow metadata separators but forbid path traversal (..) and shell pipe
+      const safeRegex = /^(?!.*\.\.)[a-zA-Z0-9_\.\/: -]+$/;
 
       if (!safeRegex.test(logType) || !safeRegex.test(cleanSourceId)) {
         const failedParam = !safeRegex.test(logType) ? `logType (${logType})` : `sourceId (${cleanSourceId})`;
@@ -291,7 +291,7 @@ app.prepare().then(async () => {
         return;
       }
 
-      if (searchTerm && (/[\;\&\|\`\$\(\)]/.test(searchTerm) || searchTerm.startsWith('-'))) {
+      if (searchTerm && (/[\;\&\|\`\$\(\)\<\>\\\{\}]/.test(searchTerm) || searchTerm.startsWith('-'))) {
         socket.emit('terminal:data', '\x1b[31m[SECURITY ERROR] Forbidden characters or flag prefix in search.\x1b[0m\r\n');
         return;
       }
@@ -377,7 +377,7 @@ app.prepare().then(async () => {
 
   server.get('/api/auth/microsoft', (req, res) => {
     const state = crypto.randomBytes(16).toString('hex');
-    res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000, sameSite: 'lax' }); // 10 min TTL
+    res.cookie('oauth_state', state, { httpOnly: true, secure: true, maxAge: 10 * 60 * 1000, sameSite: 'lax' }); // 10 min TTL
 
     const params = new URLSearchParams({
       client_id: process.env.MS_CLIENT_ID || '',
@@ -471,11 +471,6 @@ app.prepare().then(async () => {
           const result = await dbRun('INSERT INTO users (email, passwordHash, role) VALUES (?, ?, ?)', [email, hash, 'viewer']);
           user = { id: result.id, email, role: 'viewer' };
           console.log(`[MICROSOFT VIEWER AUTO-PROVISIONED] "${email}" added as viewer (domain: ${emailDomain}).`);
-        } else if (user.role === 'admin' && !isAdminEmail) {
-          // Was admin but removed from ADMIN_EMAILS — demote to viewer
-          await dbRun('UPDATE users SET role = ? WHERE id = ?', ['viewer', user.id]);
-          user = { ...user, role: 'viewer' };
-          console.log(`[MICROSOFT ADMIN DEMOTED] "${email}" demoted to viewer (removed from ADMIN_EMAILS).`);
         }
       } else {
         // Domain not allowed — block login and remove from DB if somehow they exist
@@ -494,7 +489,7 @@ app.prepare().then(async () => {
 
         res.cookie('token', token, {
           httpOnly: true,
-          secure: false,
+          secure: true,
           sameSite: 'strict',
           maxAge: 12 * 60 * 60 * 1000
         });
@@ -520,7 +515,7 @@ app.prepare().then(async () => {
     if (user && bcrypt.compareSync(password, user.passwordHash)) {
       console.log(`[LOGIN SUCCESS] User: "${email}" (Stored: "${user.email}")`);
       const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '12h' });
-      res.cookie('token', token, { httpOnly: true, secure: false, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
+      res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'strict', maxAge: 12 * 60 * 60 * 1000 });
       res.json({ success: true, email: user.email, role: user.role });
     } else {
       console.log(`[LOGIN FAILED] User: "${email}" - ${user ? 'Incorrect Password' : 'User Not Found'}`);
@@ -769,20 +764,9 @@ app.prepare().then(async () => {
     }
   });
 
-  server.get('/api/servers/:id', authenticateToken, async (req, res) => {
+  server.get('/api/servers/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
       const serverId = req.params.id;
-      if (req.user.role !== 'admin') {
-        const hasAccess = await get(`
-          SELECT 1 FROM servers s
-          INNER JOIN server_group_members sgm ON sgm.serverId = s.id
-          INNER JOIN user_group_access uga ON uga.groupId = sgm.groupId
-          WHERE s.id = ? AND uga.userId = ?
-        `, [serverId, req.user.id]);
-        if (!hasAccess) {
-          return res.status(403).json({ error: 'Access Denied: You do not have permission to access this server.' });
-        }
-      }
       const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
       if (!serverConfig) return res.status(404).json({ error: 'Server not found' });
       if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
@@ -797,11 +781,29 @@ app.prepare().then(async () => {
   // If fetchSources() is called rapidly (e.g. from docker_event), only ONE SSH
   // connection is opened — all callers await the same promise.
   const pendingDiscovery = new Map();
+  const sourceCache = new Map();
+  const CACHE_TTL_MS = 30000; // 30 seconds cache
 
   server.get('/api/servers/:id/sources', authenticateToken, async (req, res) => {
     const serverId = req.params.id;
     const type = req.query.type || '';
+
+    // Security check to prevent RCE / shell injection via parameter injection
+    if (/[;&|<>`$(){}\\"']|\.\./.test(type)) {
+      return res.status(400).json({ error: 'Invalid type parameter' });
+    }
+
+    const forceRefresh = req.query.refresh === 'true';
     const cacheKey = `${serverId}:${type}`;
+
+    if (forceRefresh) {
+      sourceCache.delete(cacheKey);
+    } else {
+      const cached = sourceCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        return res.json(cached.data);
+      }
+    }
 
     // If a discovery is already in-flight for this server, reuse it
     if (pendingDiscovery.has(cacheKey)) {
@@ -826,6 +828,8 @@ app.prepare().then(async () => {
       pendingDiscovery.set(cacheKey, promise);
 
       const sources = await promise;
+      // Store in cache
+      sourceCache.set(cacheKey, { data: sources, timestamp: Date.now() });
       res.json(sources);
     } catch (e) {
       console.error(`[DISCOVERY ERROR] Server ID ${serverId}:`, e.message);
@@ -844,7 +848,7 @@ app.prepare().then(async () => {
     if (!podIdentifier) return res.status(400).json({ error: 'Missing pod query parameter' });
 
     // Security: no path traversal or shell injection
-    if (/[;&`$(){}\\"']|\.\./.test(podIdentifier)) {
+    if (/[;&|<>`$(){}\\"']|\.\./.test(podIdentifier)) {
       return res.status(400).json({ error: 'Invalid pod identifier' });
     }
 
@@ -892,7 +896,7 @@ app.prepare().then(async () => {
     if (!containerName) return res.status(400).json({ error: 'Missing container query parameter' });
 
     // Security: no path traversal or shell injection
-    if (/[;&`$(){}\\"']|\.\./.test(containerName)) {
+    if (/[;&|<>`$(){}\\"']|\.\./.test(containerName)) {
       return res.status(400).json({ error: 'Invalid container name' });
     }
 
@@ -943,6 +947,17 @@ app.prepare().then(async () => {
 
   // Serve the secure log-wrapper.sh file
   server.get('/log-wrapper.sh', (req, res) => {
+    const token = req.query.token;
+    if (!token) return res.status(401).send('Error: Missing setup token');
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded.purpose !== 'setup-node') {
+        return res.status(403).send('Error: Invalid token');
+      }
+    } catch (err) {
+      return res.status(403).send('Error: Token expired or invalid');
+    }
+
     const filePath = path.join(__dirname, 'log-wrapper.sh');
     if (fs.existsSync(filePath)) {
       res.setHeader('Content-Type', 'text/x-sh');
@@ -976,7 +991,16 @@ app.prepare().then(async () => {
     }
 
     const pubKey = fs.readFileSync(PUBLIC_KEY_PATH, 'utf8').trim();
-    const appHost = req.headers.host;
+    
+    let appHost = req.headers.host;
+    if (process.env.REDIRECT_URI) {
+      try {
+        const url = new URL(process.env.REDIRECT_URI);
+        appHost = url.host;
+      } catch (e) {
+        // Fallback
+      }
+    }
 
     const bashScript = `#!/bin/bash
 set -e
@@ -993,7 +1017,7 @@ echo "Creating /usr/log/bin/ directory..."
 $SUDO mkdir -p /usr/log/bin/
 
 echo "Downloading log-wrapper.sh from app..."
-$SUDO curl -fsSL -k "https://${appHost}/log-wrapper.sh" -o /usr/log/bin/log-wrapper.sh
+$SUDO curl -fsSL -k "https://${appHost}/log-wrapper.sh?token=${token}" -o /usr/log/bin/log-wrapper.sh
 $SUDO chmod +x /usr/log/bin/log-wrapper.sh
 
 echo "Configuring SSH key authorization..."
@@ -1020,12 +1044,13 @@ fi
 
 MY_HOSTNAME=\$(hostname)
 MY_USER=\$(whoami)
+ALL_IPS=\$(hostname -I 2>/dev/null || echo "")
 
 echo "Registering server with PulseLog as '\${MY_HOSTNAME}' (\${MY_IP})..."
 
 curl -s -k -X POST "https://${appHost}/api/servers/register-remote?token=${token}" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"name\\":\\"\${MY_HOSTNAME}\\", \\"host\\":\\"\${MY_IP}\\", \\"username\\":\\"\${MY_USER}\\", \\"port\\":22}"
+  -d "{\\"name\\":\\"\${MY_HOSTNAME}\\", \\"host\\":\\"\${MY_IP}\\", \\"username\\":\\"\${MY_USER}\\", \\"port\\":22, \\"all_ips\\":\\"\${ALL_IPS}\\"}"
 
 echo -e "\\x1b[32m=== SETUP COMPLETE! Server '\${MY_HOSTNAME}' Registered Successfully! ===\\x1b[0m"
 `;
@@ -1047,7 +1072,7 @@ echo -e "\\x1b[32m=== SETUP COMPLETE! Server '\${MY_HOSTNAME}' Registered Succes
       return res.status(403).json({ error: 'Token expired or invalid' });
     }
 
-    const { name, host, username, port } = req.body;
+    const { name, host, username, port, all_ips } = req.body;
     if (!name || !host || !username) {
       return res.status(400).json({ error: 'Missing name, host, or username' });
     }
@@ -1060,8 +1085,51 @@ echo -e "\\x1b[32m=== SETUP COMPLETE! Server '\${MY_HOSTNAME}' Registered Succes
       const cleanKey = SSHController.sanitizeKey(privateKey);
       const encryptedKey = encrypt(cleanKey);
 
+      // Check if this server is already registered in the database.
+      // Parse all reported IPs (including hostname -I output).
+      const reportedIps = new Set([host.trim()]);
+      if (all_ips) {
+        all_ips.split(/\s+/).forEach(ip => {
+          const trimmed = ip.trim();
+          if (trimmed) reportedIps.add(trimmed);
+        });
+      }
+
+      // Fetch all registered servers
+      const allServers = await all('SELECT * FROM servers');
+      let matchedServer = null;
+
+      for (const s of allServers) {
+        // Skip comparing against Local System placeholder config
+        if (s.host === 'localhost' || s.host === '127.0.0.1' || s.host === '::1') continue;
+
+        // 1. Match by IP address
+        if (reportedIps.has(s.host)) {
+          matchedServer = s;
+          break;
+        }
+
+        // 2. Match by exact username and name
+        if (s.username === username && s.name.toLowerCase() === name.toLowerCase()) {
+          matchedServer = s;
+          break;
+        }
+      }
+
+      if (matchedServer) {
+        // If server is already registered, update its private key, username, and port (just in case they changed)
+        // Keep the original name and host IP/domain to preserve user custom configurations (such as friendly names/IPv4).
+        await dbRun('UPDATE servers SET privateKey = ?, username = ?, port = ? WHERE id = ?',
+          [encryptedKey, username, port || matchedServer.port || 22, matchedServer.id]);
+        
+        console.log(`[AUTO REGISTRATION] Updated existing server '${matchedServer.name}' (ID: ${matchedServer.id})`);
+        return res.json({ success: true, id: matchedServer.id, updated: true });
+      }
+
+      // Otherwise, register as a new server entry
       const result = await dbRun('INSERT INTO servers (name, host, port, username, privateKey) VALUES (?, ?, ?, ?, ?)',
         [name, host, port || 22, username, encryptedKey]);
+      console.log(`[AUTO REGISTRATION] Registered new server '${name}' (ID: ${result.id})`);
       res.json({ success: true, id: result.id });
     } catch (e) {
       console.error('[AUTO REGISTRATION ERROR]', e.message);

@@ -18,6 +18,33 @@ fi
 # Parse the original command into an array for robust shifting
 read -r -a WORDS <<< "$SSH_ORIGINAL_COMMAND"
 
+# Helper functions to sanitize and validate inputs to prevent shell/command injection
+validate_path() {
+  local path="$1"
+  if [ -z "$path" ]; then
+    return
+  fi
+  if [[ "$path" =~ [\'\"\`\$\;\&\!\|\<\>\(\)] ]]; then
+    echo "[SECURITY ERROR] Path contains forbidden characters." >&2
+    exit 1
+  fi
+  if [[ "$path" == *".."* ]]; then
+    echo "[SECURITY ERROR] Path traversal detected." >&2
+    exit 1
+  fi
+}
+
+validate_identifier() {
+  local id="$1"
+  if [ -z "$id" ]; then
+    return
+  fi
+  if [[ "$id" =~ [\'\"\`\$\;\&\!\|\<\>\(\)\ ] ]]; then
+    echo "[SECURITY ERROR] Identifier contains forbidden characters." >&2
+    exit 1
+  fi
+}
+
 # If the command starts with the script name, shift the arguments
 if [[ "${WORDS[0]}" == *"log-wrapper.sh" ]]; then
   WORDS=("${WORDS[@]:1}")
@@ -154,6 +181,7 @@ case "$CMD" in
     # Discovers log files and containers inside a specific Kubernetes pod
     # Usage: discover-pod-files <namespace/podname>
     POD_IDENTIFIER="$ARG1"
+    validate_identifier "$POD_IDENTIFIER"
 
     if [ -z "$POD_IDENTIFIER" ]; then
       echo "[ERROR] No pod identifier provided"
@@ -201,6 +229,8 @@ case "$CMD" in
     POD_IDENTIFIER="$ARG1"
     CONTAINER_NAME="$ARG2"
     SEARCH="$ARG3"
+    validate_identifier "$POD_IDENTIFIER"
+    validate_identifier "$CONTAINER_NAME"
 
     if [ -z "$POD_IDENTIFIER" ] || [ -z "$CONTAINER_NAME" ]; then
       echo "[ERROR] Usage: read-pod-container <namespace/podname> <container_name>"
@@ -229,12 +259,15 @@ case "$CMD" in
     # Usage: read-pod-file <namespace/podname> </path/to/file.log> [--container <container>] [searchterm]
     POD_IDENTIFIER="${WORDS[1]}"
     FILE_PATH="${WORDS[2]}"
+    validate_identifier "$POD_IDENTIFIER"
+    validate_path "$FILE_PATH"
     CONTAINER_FLAG=""
     SEARCH=""
 
     # Parse arguments starting from index 3
     for ((i=3; i<${#WORDS[@]}; i++)); do
       if [[ "${WORDS[i]}" == "--container" || "${WORDS[i]}" == "-c" ]]; then
+        validate_identifier "${WORDS[i+1]}"
         CONTAINER_FLAG="-c ${WORDS[i+1]}"
         ((i++))
       else
@@ -278,6 +311,7 @@ case "$CMD" in
     # Discovers log files inside a specific Docker container
     # Usage: discover-container-files <container_name>
     CONTAINER_NAME="$ARG1"
+    validate_identifier "$CONTAINER_NAME"
 
     if [ -z "$CONTAINER_NAME" ]; then
       echo "[ERROR] No container name provided"
@@ -299,6 +333,8 @@ case "$CMD" in
     CONTAINER_NAME="$ARG1"
     FILE_PATH="$ARG2"
     SEARCH="$ARG3"
+    validate_identifier "$CONTAINER_NAME"
+    validate_path "$FILE_PATH"
 
     if [ -z "$CONTAINER_NAME" ] || [ -z "$FILE_PATH" ]; then
       echo "[ERROR] Usage: read-container-file <container_name> </path/to/logfile>"
@@ -322,6 +358,8 @@ case "$CMD" in
   "read-logs")
     LOG_TYPE="$ARG1"
     LOG_SOURCE="$ARG2"
+    validate_identifier "$LOG_TYPE"
+    validate_path "$LOG_SOURCE"
 
     # Defense-in-depth: Block path traversal even if bypassed at the app layer
     if [[ "$LOG_SOURCE" == *".."* ]]; then
@@ -354,6 +392,7 @@ case "$CMD" in
       "docker")
         # Strip status suffix if present (anything after :)
         CLEAN_DOCKER="${LOG_SOURCE%%:*}"
+        validate_identifier "$CLEAN_DOCKER"
         if [ -n "$ARG3" ]; then
           docker logs --tail 200 -f "$CLEAN_DOCKER" 2>&1 | grep --line-buffered -i -e "$ARG3" --
         else
@@ -367,9 +406,12 @@ case "$CMD" in
           K8S_POD_FULL="${LOG_SOURCE#*/}"
           # Strip status suffix if present (anything after :)
           K8S_POD="${K8S_POD_FULL%%:*}"
+          validate_identifier "$K8S_NS"
+          validate_identifier "$K8S_POD"
           NS_FLAG="-n $K8S_NS"
         else
           K8S_POD="${LOG_SOURCE%%:*}"
+          validate_identifier "$K8S_POD"
           NS_FLAG=""
         fi
         if [ -n "$ARG3" ]; then

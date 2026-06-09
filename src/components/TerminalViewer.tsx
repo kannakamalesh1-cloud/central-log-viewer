@@ -51,6 +51,15 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     if (onStatusChange) onStatusChange('stopped');
   }, [serverId, logType, sourceId]);
 
+  // Automatically update search after 400ms of typing inactivity
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      setActiveSearch(searchTerm);
+    }, 400);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchTerm]);
+
   // Sync pause with header heartbeat
   useEffect(() => {
     if (onStatusChange && serverId && sourceId && !isPaused) onStatusChange('running');
@@ -306,7 +315,10 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         )}
 
         {/* Watch input */}
-        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10 transition-all flex-shrink-0 gap-1.5">
+        <div 
+          title="Real-Time Alerts: Type a keyword & press Enter to highlight matches in bright red and count occurrences."
+          className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10 transition-all flex-shrink-0 gap-1.5"
+        >
           <Activity className="w-3 h-3 text-sky-500 flex-shrink-0" />
           <input
             type="text" value={newWatchKeyword}
@@ -318,8 +330,8 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                 setNewWatchKeyword('');
               }
             }}
-            placeholder="Watch"
-            className="bg-transparent text-slate-700 text-[10px] font-bold outline-none w-12 placeholder:text-slate-400"
+            placeholder="Watch keyword..."
+            className="bg-transparent text-slate-700 text-[10px] font-bold outline-none w-24 placeholder:text-slate-400"
           />
           {watchlist.length > 0 && (
             <div className="flex items-center gap-1 ml-1 pl-1.5 border-l border-slate-200">
@@ -333,15 +345,15 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
           )}
         </div>
 
-        {/* Search input */}
-        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10 transition-all flex-shrink-0 gap-1.5">
+        {/* Search input with Auto-Trigger and Clear Option */}
+        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-500/20 transition-all flex-shrink-0 gap-1.5">
           <Search className="w-3 h-3 text-sky-500 flex-shrink-0" />
           <input
-            type="text" value={searchTerm}
+            type="text"
+            value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') setActiveSearch(searchTerm); }}
             placeholder="Search"
-            className="bg-transparent text-slate-700 text-[10px] font-bold outline-none w-14 placeholder:text-slate-400"
+            className="bg-transparent text-slate-700 text-[10px] font-bold outline-none w-16 placeholder:text-slate-400"
           />
           <button
             onClick={() => setIsRegex(r => !r)}
@@ -350,11 +362,22 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
                 ? 'text-amber-600 border-amber-400/50 bg-amber-50'
                 : 'text-slate-400 border-slate-200 hover:border-slate-300'
             }`}
-          >.*</button>
-          <button
-            onClick={() => setActiveSearch(searchTerm)}
-            className="text-[10px] font-black text-slate-400 hover:text-sky-600 transition-colors ml-0.5"
-          >Go</button>
+            title="Toggle regex"
+          >
+            .*
+          </button>
+          {searchTerm && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setActiveSearch('');
+              }}
+              className="text-[10px] font-black text-slate-400 hover:text-red-500 transition-colors ml-0.5"
+              title="Clear search"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
 
         {/* Utility button group */}

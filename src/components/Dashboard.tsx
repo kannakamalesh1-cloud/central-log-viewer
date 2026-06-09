@@ -38,7 +38,7 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
     systemHealthy: true
   });
 
-  const [sortConfig, setSortConfig] = useState<{key: keyof AuditLogData, dir: 'asc'|'desc'}>({ key: 'timestamp', dir: 'desc' });
+  const [sortConfig, setSortConfig] = useState<{ key: keyof AuditLogData, dir: 'asc' | 'desc' }>({ key: 'timestamp', dir: 'desc' });
 
   const exportAuditLogs = () => {
     if (auditLogs.length === 0) return;
@@ -53,13 +53,13 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
         log.sourceId
       ];
     });
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + headers.join(",") + "\n" 
+    const csvContent = "data:text/csv;charset=utf-8,"
+      + headers.join(",") + "\n"
       + rows.map(e => e.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `pulselog_audit_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute("download", `pulselog_audit_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -69,7 +69,7 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
     const fixedTime = log.timestamp.includes('Z') ? log.timestamp : log.timestamp.replace(' ', 'T') + 'Z';
     const dateObj = new Date(fixedTime);
     const dateStr = dateObj.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
-    
+
     const rowString = `${log.userEmail} ${log.serverName} ${log.logType} ${log.sourceId} ${dateStr}`.toLowerCase();
     let searchInput = auditSearchTerm.toLowerCase();
     let matchesRange = true;
@@ -77,44 +77,44 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
     // 1. Check for time ranges: "5:00 pm to 6:00 pm" or "5:10-5:30pm"
     const timeRangeMatch = searchInput.match(/([0-9]{1,2}:[0-9]{2}\s*(?:am|pm)?)\s*(?:to|-)\s*([0-9]{1,2}:[0-9]{2}\s*(?:am|pm)?)/);
     if (timeRangeMatch) {
-       searchInput = searchInput.replace(timeRangeMatch[0], '');
-       const parseTime = (timeStr: string) => {
-         let match = timeStr.trim().match(/([0-9]{1,2}):([0-9]{2})\s*(am|pm)?/);
-         if (!match) return 0;
-         let hours = parseInt(match[1]);
-         let minutes = parseInt(match[2]);
-         let modifier = match[3];
-         if (!modifier) modifier = timeRangeMatch[2].includes('pm') ? 'pm' : 'am';
-         if (hours === 12) hours = 0;
-         if (modifier === 'pm') hours += 12;
-         return hours * 60 + minutes;
-       };
-       try {
-         const startMins = parseTime(timeRangeMatch[1]);
-         const endMins = parseTime(timeRangeMatch[2]);
-         const logMins = dateObj.getHours() * 60 + dateObj.getMinutes();
-         if (logMins < startMins || logMins > endMins) matchesRange = false;
-       } catch(e) {}
+      searchInput = searchInput.replace(timeRangeMatch[0], '');
+      const parseTime = (timeStr: string) => {
+        let match = timeStr.trim().match(/([0-9]{1,2}):([0-9]{2})\s*(am|pm)?/);
+        if (!match) return 0;
+        let hours = parseInt(match[1]);
+        let minutes = parseInt(match[2]);
+        let modifier = match[3];
+        if (!modifier) modifier = timeRangeMatch[2].includes('pm') ? 'pm' : 'am';
+        if (hours === 12) hours = 0;
+        if (modifier === 'pm') hours += 12;
+        return hours * 60 + minutes;
+      };
+      try {
+        const startMins = parseTime(timeRangeMatch[1]);
+        const endMins = parseTime(timeRangeMatch[2]);
+        const logMins = dateObj.getHours() * 60 + dateObj.getMinutes();
+        if (logMins < startMins || logMins > endMins) matchesRange = false;
+      } catch (e) { }
     }
 
     // 2. Check for date ranges: "apr 20-apr 21" or "apr20 to 21"
     const dateRangeMatch = searchInput.match(/([a-z]{3})\s*([0-9]{1,2})\s*(?:to|-)\s*(?:([a-z]{3})\s*)?([0-9]{1,2})/);
     if (dateRangeMatch) {
-       searchInput = searchInput.replace(dateRangeMatch[0], '');
-       const months = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
-       const startMonth = months[dateRangeMatch[1] as keyof typeof months];
-       const startDay = parseInt(dateRangeMatch[2]);
-       const endMonth = dateRangeMatch[3] ? months[dateRangeMatch[3] as keyof typeof months] : startMonth;
-       const endDay = parseInt(dateRangeMatch[4]);
-       
-       const logMonth = dateObj.getMonth();
-       const logDay = dateObj.getDate();
-       
-       const startScore = startMonth * 100 + startDay;
-       const endScore = endMonth * 100 + endDay;
-       const logScore = logMonth * 100 + logDay;
-       
-       if (logScore < startScore || logScore > endScore) matchesRange = false;
+      searchInput = searchInput.replace(dateRangeMatch[0], '');
+      const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+      const startMonth = months[dateRangeMatch[1] as keyof typeof months];
+      const startDay = parseInt(dateRangeMatch[2]);
+      const endMonth = dateRangeMatch[3] ? months[dateRangeMatch[3] as keyof typeof months] : startMonth;
+      const endDay = parseInt(dateRangeMatch[4]);
+
+      const logMonth = dateObj.getMonth();
+      const logDay = dateObj.getDate();
+
+      const startScore = startMonth * 100 + startDay;
+      const endScore = endMonth * 100 + endDay;
+      const logScore = logMonth * 100 + logDay;
+
+      if (logScore < startScore || logScore > endScore) matchesRange = false;
     }
 
     if (!matchesRange) return false;
@@ -122,7 +122,7 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
     // Smart time parsing: if user types "5:00", match the entire 5:xx hour block.
     const smartSearch = searchInput.replace(/([0-9]{1,2}):00(?=\s|$|a|p)/g, '$1:');
     const searchTerms = smartSearch.split(/\s+/).filter(Boolean);
-    
+
     return searchTerms.every(term => rowString.includes(term));
   }).sort((a, b) => {
     let aVal = a[sortConfig.key];
@@ -154,7 +154,7 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
       if (userRole === 'admin') {
         const userRes = await fetch(`/api/users?_t=${ts}`, { cache: 'no-store', headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' } });
         const usersData = await userRes.json();
-        
+
         const auditRes = await fetch(`/api/audit?_t=${ts}`, { cache: 'no-store', headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' } });
         if (auditRes.ok) {
           const auditData = await auditRes.json();
@@ -255,15 +255,18 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
             <div
               key={server.id}
               onClick={() => onSelectServer(server.id)}
-              className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm transition-all hover:shadow-md hover:translate-y-[-4px] cursor-pointer group"
+              className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer group"
             >
               <div className="flex justify-between items-start mb-4">
                 <div className="p-2.5 bg-slate-100 rounded-2xl border border-slate-200 group-hover:bg-sky-500/10 group-hover:border-sky-500/30 transition-all">
                   <Server className="w-5 h-5 text-slate-400 group-hover:text-sky-600" />
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Connected</span>
+                  <span className="relative flex h-1.5 w-1.5 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500 animate-pulse"></span>
+                  </span>
+                  <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest leading-none">Connected</span>
                 </div>
               </div>
 
@@ -290,22 +293,22 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
                 <List className="w-5 h-5 text-sky-600" />
               </div>
               <div>
-                 <h2 className="text-lg font-bold text-slate-800 tracking-tight">Security Audit Trail</h2>
-                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Immutable Access Logs</p>
+                <h2 className="text-lg font-bold text-slate-800 tracking-tight">Security Audit Trail</h2>
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Immutable Access Logs</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative group">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-sky-500 transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="Filter logs..." 
+                <input
+                  type="text"
+                  placeholder="Filter logs..."
                   value={auditSearchTerm}
                   onChange={(e) => setAuditSearchTerm(e.target.value)}
                   className="w-64 bg-white border border-slate-200 text-slate-800 text-sm rounded-xl pl-9 pr-4 py-2 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/10 transition-all placeholder:text-slate-400 shadow-sm"
                 />
               </div>
-              <button 
+              <button
                 onClick={exportAuditLogs}
                 disabled={auditLogs.length === 0}
                 className="flex items-center gap-2 bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 text-slate-600 hover:text-sky-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed group shadow-sm"
@@ -339,15 +342,15 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredAuditLogs.length === 0 ? (
-                     <tr>
-                        <td colSpan={5} className="px-6 py-12">
-                           <div className="flex flex-col items-center justify-center text-slate-400">
-                              <Search className="w-8 h-8 mb-3 opacity-20" />
-                              <span className="font-semibold text-sm">No audit records found</span>
-                              {auditSearchTerm && <span className="text-xs mt-1">Try adjusting your filters</span>}
-                           </div>
-                        </td>
-                     </tr>
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12">
+                        <div className="flex flex-col items-center justify-center text-slate-400">
+                          <Search className="w-8 h-8 mb-3 opacity-20" />
+                          <span className="font-semibold text-sm">No audit records found</span>
+                          {auditSearchTerm && <span className="text-xs mt-1">Try adjusting your filters</span>}
+                        </div>
+                      </td>
+                    </tr>
                   ) : (
                     filteredAuditLogs.map((log) => {
                       const fixedTime = log.timestamp.includes('Z') ? log.timestamp : log.timestamp.replace(' ', 'T') + 'Z';
@@ -363,31 +366,31 @@ export default function Dashboard({ onSelectServer, userRole }: DashboardProps) 
                           </td>
                           <td className="px-6 py-3.5">
                             <div className="flex items-center gap-2">
-                               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner ${isRoot ? 'bg-red-500' : 'bg-sky-500'}`}>
-                                  {log.userEmail.substring(0, 2).toUpperCase()}
-                               </div>
-                               <span className={`font-semibold ${isRoot ? 'text-red-500' : 'text-sky-700'}`}>{log.userEmail}</span>
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner ${isRoot ? 'bg-red-500' : 'bg-sky-500'}`}>
+                                {log.userEmail.substring(0, 2).toUpperCase()}
+                              </div>
+                              <span className={`font-semibold ${isRoot ? 'text-red-500' : 'text-sky-700'}`}>{log.userEmail}</span>
                             </div>
                           </td>
                           <td className="px-6 py-3.5">
-                             <div className="flex items-center gap-2">
-                                <Server className="w-3.5 h-3.5 text-slate-400" />
-                                <span className="font-medium text-slate-700">{log.serverName}</span>
-                             </div>
+                            <div className="flex items-center gap-2">
+                              <Server className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="font-medium text-slate-700">{log.serverName}</span>
+                            </div>
                           </td>
                           <td className="px-6 py-3.5">
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                               {log.logType === 'docker' && <Box className="w-3 h-3 text-blue-400" />}
-                               {log.logType === 'k8s' && <Cloud className="w-3 h-3 text-sky-500" />}
-                               {log.logType === 'database' && <Database className="w-3 h-3 text-yellow-400" />}
-                               {log.logType === 'system' && <Settings className="w-3 h-3 text-slate-500" />}
-                               {log.logType === 'auth' && <Shield className="w-3 h-3 text-red-400" />}
-                               {!['docker','k8s','database','system','auth'].includes(log.logType) && <Activity className="w-3 h-3 text-slate-400" />}
-                               {log.logType}
+                              {log.logType === 'docker' && <Box className="w-3 h-3 text-blue-400" />}
+                              {log.logType === 'k8s' && <Cloud className="w-3 h-3 text-sky-500" />}
+                              {log.logType === 'database' && <Database className="w-3 h-3 text-yellow-400" />}
+                              {log.logType === 'system' && <Settings className="w-3 h-3 text-slate-500" />}
+                              {log.logType === 'auth' && <Shield className="w-3 h-3 text-red-400" />}
+                              {!['docker', 'k8s', 'database', 'system', 'auth'].includes(log.logType) && <Activity className="w-3 h-3 text-slate-400" />}
+                              {log.logType}
                             </span>
                           </td>
                           <td className="px-6 py-3.5 font-mono text-xs text-slate-500 max-w-[250px] truncate group-hover:text-sky-700 transition-colors" title={log.sourceId}>
-                             {log.sourceId}
+                            {log.sourceId}
                           </td>
                         </tr>
                       );

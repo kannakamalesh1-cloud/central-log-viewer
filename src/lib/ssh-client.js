@@ -7,6 +7,7 @@ const crypto = require('crypto');
 
 // Calculate MD5 of the local log-wrapper.sh to check for updates on remote hosts
 let localMd5 = '';
+const verifiedWrappers = new Set();
 try {
   const localWrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
   if (fs.existsSync(localWrapperPath)) {
@@ -152,20 +153,26 @@ class SSHController {
     return new Promise((resolve, reject) => {
       const conn = new Client();
       conn.on('ready', () => {
-        // Proactively verify the MD5 checksum of the remote log-wrapper.sh against the local version
-        conn.exec('md5sum ./log-wrapper.sh 2>/dev/null', (err, stream) => {
-          let output = '';
-          if (err || !stream) return doUpload();
-          stream.on('data', (data) => output += data.toString());
-          stream.on('close', () => {
-            const remoteHash = output.trim().split(/\s+/)[0];
-            if (remoteHash && remoteHash === localMd5) {
-              executeDiscovery();
-            } else {
-              doUpload();
-            }
+        const serverKey = `${serverConfig.host}:${serverConfig.port}`;
+        if (verifiedWrappers.has(serverKey)) {
+          executeDiscovery();
+        } else {
+          // Proactively verify the MD5 checksum of the remote log-wrapper.sh against the local version
+          conn.exec('md5sum ./log-wrapper.sh 2>/dev/null', (err, stream) => {
+            let output = '';
+            if (err || !stream) return doUpload();
+            stream.on('data', (data) => output += data.toString());
+            stream.on('close', () => {
+              const remoteHash = output.trim().split(/\s+/)[0];
+              if (remoteHash && remoteHash === localMd5) {
+                verifiedWrappers.add(serverKey);
+                executeDiscovery();
+              } else {
+                doUpload();
+              }
+            });
           });
-        });
+        }
 
         function doUpload() {
           conn.sftp((sftpErr, sftp) => {
@@ -176,6 +183,7 @@ class SSHController {
               conn.exec('chmod +x ./log-wrapper.sh', (chmodErr, chmodStream) => {
                 if (chmodErr) return executeDiscovery();
                 chmodStream.on('close', () => {
+                  verifiedWrappers.add(serverKey);
                   executeDiscovery();
                 });
               });
