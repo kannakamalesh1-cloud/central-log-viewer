@@ -128,11 +128,19 @@ The application will be available at `http://localhost:3000`.
 
 ## 📖 Usage Guide
 
-### Adding a Server
-1. Click the **Plus (+)** icon in the sidebar.
-2. Enter the server name, host, SSH port, and username.
-3. Paste the **SSH Private Key**. (PulseLog will automatically sanitize and encrypt the key before saving).
-4. Use **Test Connection** to verify connectivity.
+### Admin Control Panel
+Administrators can configure system settings via the **Admin Settings (gear icon)** next to the User Guide button in the sidebar:
+1. **User Permissions (KeyRound)**:
+   - Create and manage operator accounts.
+   - Assign security access roles: **Admins** (full system access) and **Viewers** (restricted log stream access).
+   - Restrict Viewer visibility to specific Server Groups.
+2. **Server Groups (Folder)**:
+   - Create, edit, and categorize groups of servers (e.g., "Production", "Staging", "API Nodes").
+   - Helps partition server lists and manage client/viewer visibility permissions dynamically.
+3. **Add Server (Plus)**:
+   - Onboard new Linux or Windows target nodes.
+   - Enter SSH host, port, username, and paste the private key. PulseLog automatically encrypts the key at rest (AES-256-GCM).
+   - Test connectivity immediately using the built-in **Test Connection** utility.
 
 ### Monitoring Logs
 1. Select a server from the sidebar.
