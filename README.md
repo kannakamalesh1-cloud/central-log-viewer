@@ -21,13 +21,20 @@ Unlike traditional logging stacks that require complex agents and storage, Pulse
 - **🛠️ Multi-Cloud & Hybrid**: Manage multiple servers (Production, Staging, Edge) from a single unified interface.
 - **🔍 Advanced Search & Watch**: 
   - Live server-side filtering with Regex support.
+  - **Auto-Trigger Search**: Debounced input (400ms delay) automatically filters logs as you type, eliminating manual triggers.
+  - **Instant Clear & Resume**: Embeds a clear button inside the search field to reset filters and immediately resume the live unfiltered log stream.
   - "Watch" keywords to highlight critical events in real-time.
 - **Anomaly Detection**: Error spike monitoring that alerts you if more than 3 errors occur in a 10-second window.
 - **🛡️ Hardened Security**:
   - **AES-256-GCM** encryption for SSH private keys at rest.
   - **Restricted Execution**: Uses a security wrapper (`log-wrapper.sh`) on target servers to limit SSH access to log viewing only.
+  - **Role & Group-Based Permissions**: Restrict Viewer operators to specific server groups.
   - **JWT Authentication** with session blacklisting.
-- **⚡ Pro UI/UX**: Cinematic dark mode, glassmorphic elements, and Xterm-powered terminal rendering.
+- **⚡ Pro UI/UX**:
+  - Cinematic dark mode, glassmorphic elements, and Xterm-powered terminal rendering.
+  - **Micro-Animations**: Live connection ping halos and pulse animations for real-time status.
+  - **Interactive Hover Scales**: Lift-on-hover actions on the connected servers grid.
+  - **Aesthetic Elements**: Soft emerald badge live states, ambient blue focus halos on forms, and sky-gradient primary buttons.
 
 ---
 
