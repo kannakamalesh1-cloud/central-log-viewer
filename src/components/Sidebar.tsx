@@ -1825,7 +1825,7 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
       </div>
 
       {/* Admin User Guide Panel */}
-      <div className={`absolute inset-0 bg-slate-50 z-50 transition-transform duration-500 ease-in-out flex flex-col p-6 overflow-y-auto ${showGuide ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`absolute inset-0 bg-slate-50 z-50 transition-transform duration-500 ease-in-out flex flex-col p-6 overflow-y-auto select-text ${showGuide ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-cyan-500/20 rounded-xl border border-cyan-500/30">
