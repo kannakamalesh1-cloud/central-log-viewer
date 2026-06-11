@@ -534,6 +534,101 @@ app.prepare().then(async () => {
     res.json({ success: true });
   });
 
+  // Groq Error Spike Analysis API (Free — Llama 3.3 70B)
+  server.post('/api/analyze-error', authenticateToken, async (req, res) => {
+
+    const { logs } = req.body;
+    if (!logs) {
+      return res.status(400).json({ error: 'Logs are required' });
+    }
+
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Groq API key is not configured. Add GROQ_API_KEY to .env' });
+    }
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert Senior Site Reliability Engineer and Systems Administrator.
+Your job is to analyze server/application log snippets and produce a detailed, highly accurate incident report.
+
+Your job is to analyze server/application log snippets and produce a detailed, objective incident report.
+
+Always follow these SRE analysis guidelines:
+1. Objectivity: Do not assume a server is compromised or call activity a "malicious attack" unless there is clear evidence of exploitation (e.g., successful remote code execution payloads or successful auth bypass). Refer to automated probes, scans, or hex packets as "automated reconnaissance, fingerprinting, or scanning activity". Always explicitly state if there is no evidence of successful exploitation in the log snippet.
+2. Correct Web Mitigations: Never suggest using "ufw limit" for HTTP/HTTPS web traffic (port 80 or 443), as it causes false positives for multi-asset web loads. Instead, recommend industry-standard application-layer rate limiting (like Nginx's "limit_req_zone"), Fail2ban, or Cloudflare WAF.
+3. Production Deployment: If logs show development servers (such as Python's Werkzeug, Node.js raw HTTP, etc.) directly exposed to the internet, always recommend putting a production-grade WSGI/ASGI server (e.g., Gunicorn, uWSGI) behind a reverse proxy (e.g., Nginx, Apache).
+4. Protocol Accuracy: Do not recommend changing protocol-level errors (like HTTP 400 Bad Request for bad syntax/versions) to application/authorization errors (like HTTP 403 Forbidden).
+
+Always structure your response with these exact sections using Markdown:
+
+## 🔍 Root Cause
+One clear paragraph identifying exactly what caused the error/warning entries or spike.
+
+## 📋 What Happened
+A concise timeline or explanation of the chain of events that led to the issue.
+
+## 🛠️ How to Fix It
+Numbered step-by-step instructions. Include exact terminal commands or config lines inside fenced code blocks.
+
+## 🛡️ How to Prevent It
+Best practices or architectural improvements to stop this from happening again.
+
+Be specific, accurate, and technical. Do not add disclaimers or filler text.`
+            },
+            {
+              role: 'user',
+              content: `Analyze this log excerpt and produce a full incident diagnostic report:
+
+\`\`\`
+${logs}
+\`\`\``
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 2048,
+          top_p: 1,
+          stream: false,
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Groq API Error:', errText);
+        let friendlyError = 'Failed to communicate with Groq API';
+        try {
+          const errJson = JSON.parse(errText);
+          const detail = errJson?.error?.message;
+          if (detail) friendlyError = `Groq: ${detail}`;
+        } catch (_) { }
+        return res.status(response.status).json({ error: friendlyError });
+      }
+
+      const data = await response.json();
+      const report = data.choices?.[0]?.message?.content;
+
+      if (!report) {
+        return res.status(500).json({ error: 'No response generated from Groq.' });
+      }
+
+      res.json({ report });
+    } catch (error) {
+      console.error('Error in /api/analyze-error:', error);
+      res.status(500).json({ error: 'Internal server error during analysis' });
+    }
+  });
+
+
   // Audit Logs API - ADMIN ONLY
   server.get('/api/audit', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -991,7 +1086,7 @@ app.prepare().then(async () => {
     }
 
     const pubKey = fs.readFileSync(PUBLIC_KEY_PATH, 'utf8').trim();
-    
+
     let appHost = req.headers.host;
     if (process.env.REDIRECT_URI) {
       try {
@@ -1121,7 +1216,7 @@ echo -e "\\x1b[32m=== SETUP COMPLETE! Server '\${MY_HOSTNAME}' Registered Succes
         // Keep the original name and host IP/domain to preserve user custom configurations (such as friendly names/IPv4).
         await dbRun('UPDATE servers SET privateKey = ?, username = ?, port = ? WHERE id = ?',
           [encryptedKey, username, port || matchedServer.port || 22, matchedServer.id]);
-        
+
         console.log(`[AUTO REGISTRATION] Updated existing server '${matchedServer.name}' (ID: ${matchedServer.id})`);
         return res.json({ success: true, id: matchedServer.id, updated: true });
       }

@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { io, Socket } from 'socket.io-client';
-import { Search, Pause, Play, Trash2, Download, Activity, X, ExternalLink } from 'lucide-react';
+import { Search, Pause, Play, Trash2, Download, Activity, X, ExternalLink, Sparkles, Loader2 } from 'lucide-react';
 
 interface TerminalViewerProps {
   serverId: number | null;
@@ -34,6 +34,11 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   const [isDimmed, setIsDimmed]               = useState(false);
   const [errorSpike, setErrorSpike]           = useState(false);
   const [errorSpikeCount, setErrorSpikeCount] = useState(0);
+
+  // Gemini state variables
+  const [isAnalyzing, setIsAnalyzing]           = useState(false);
+  const [analysisReport, setAnalysisReport]     = useState<string | null>(null);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
   const logBuffer        = useRef<string>('');
   const watchlistRef     = useRef<string[]>([]);
@@ -64,6 +69,49 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   useEffect(() => {
     if (onStatusChange && serverId && sourceId && !isPaused) onStatusChange('running');
   }, [isPaused, serverId, sourceId]);
+
+  const handleAnalyzeSpike = async () => {
+    if (!termInstance.current) return;
+    
+    // Extract recent logs from the active terminal buffer (last 150 lines)
+    const buffer = termInstance.current.buffer.active;
+    const lines: string[] = [];
+    const startLine = Math.max(0, buffer.length - 150);
+    for (let i = startLine; i < buffer.length; i++) {
+      const line = buffer.getLine(i);
+      if (line) {
+        lines.push(line.translateToString());
+      }
+    }
+    const recentLogs = lines.join('\n');
+
+    setIsAnalyzing(true);
+    setAnalysisReport(null);
+    setShowAnalysisModal(true);
+
+    try {
+      const res = await fetch('/api/analyze-error', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ logs: recentLogs }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to analyze logs');
+      }
+
+      const data = await res.json();
+      setAnalysisReport(data.report);
+    } catch (err: any) {
+      setAnalysisReport(`### ❌ Analysis Failed\n\nUnable to generate report: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
 
   // Terminal init
   useEffect(() => {
@@ -258,7 +306,95 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     a.click(); URL.revokeObjectURL(url);
   };
 
+  const renderMarkdown = (text: string) => {
+    if (!text) return null;
+    
+    // Split by code blocks first
+    const parts = text.split(/(```[\s\S]*?```)/g);
+    
+    return parts.map((part, index) => {
+      if (part.startsWith('```')) {
+        const lines = part.split('\n');
+        const lang = lines[0].replace('```', '').trim() || 'bash';
+        const code = lines.slice(1, -1).join('\n');
+        
+        return (
+          <div key={index} className="my-5 rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 shadow-lg font-mono">
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-900 border-b border-slate-700 text-xs font-bold text-slate-400 uppercase tracking-widest">
+              <span>{lang}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(code)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-all active:scale-95 cursor-pointer text-xs font-black uppercase tracking-wider"
+              >
+                Copy Code
+              </button>
+            </div>
+            <pre className="p-5 overflow-x-auto text-sm text-slate-100 whitespace-pre leading-relaxed select-text">{code}</pre>
+          </div>
+        );
+      }
+      
+      const lines = part.split('\n');
+      return lines.map((line, lineIdx) => {
+        const trimmed = line.trim();
+        
+        if (trimmed.startsWith('###')) {
+          return (
+            <h4 key={`${index}-${lineIdx}`} className="text-sm font-black text-slate-800 uppercase tracking-wider mt-6 mb-3 flex items-center gap-2">
+              <span className="w-1 h-4 rounded-full bg-gradient-to-b from-sky-400 to-indigo-500" />
+              {trimmed.replace('###', '').trim()}
+            </h4>
+          );
+        }
+        if (trimmed.startsWith('##')) {
+          return (
+            <h3 key={`${index}-${lineIdx}`} className="text-base font-black text-slate-900 tracking-tight mt-7 mb-4 flex items-center gap-2.5">
+              <span className="w-1.5 h-5 rounded-full bg-gradient-to-b from-purple-400 to-pink-500" />
+              {trimmed.replace('##', '').trim()}
+            </h3>
+          );
+        }
+        if (trimmed.startsWith('#')) {
+          return (
+            <h2 key={`${index}-${lineIdx}`} className="text-lg font-black bg-gradient-to-r from-indigo-500 to-sky-500 text-transparent bg-clip-text mt-8 mb-4">
+              {trimmed.replace('#', '').trim()}
+            </h2>
+          );
+        }
+        if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
+          return (
+            <div key={`${index}-${lineIdx}`} className="flex items-start gap-3 ml-4 my-2 text-sm text-slate-600">
+              <span className="text-sky-500 mt-0.5 flex-shrink-0 text-base">•</span>
+              <span>{trimmed.substring(1).trim()}</span>
+            </div>
+          );
+        }
+        if (/^\d+\./.test(trimmed)) {
+          const match = trimmed.match(/^(\d+)\.(.*)/);
+          if (match) {
+            return (
+              <div key={`${index}-${lineIdx}`} className="flex items-start gap-3 ml-4 my-2.5 text-sm text-slate-600">
+                <span className="font-black text-indigo-500 flex-shrink-0">{match[1]}.</span>
+                <span>{match[2].trim()}</span>
+              </div>
+            );
+          }
+        }
+        if (trimmed === '') {
+          return <div key={`${index}-${lineIdx}`} className="h-3" />;
+        }
+        
+        return (
+          <p key={`${index}-${lineIdx}`} className="text-sm text-slate-600 leading-relaxed my-1.5 font-sans">
+            {line}
+          </p>
+        );
+      });
+    });
+  };
+
   return (
+
     <div
       onClick={onSlotClick}
       className={`w-full h-full flex flex-col bg-white rounded-3xl overflow-hidden transition-all duration-300 cursor-default overscroll-none select-none ${
@@ -290,16 +426,27 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
 
         {/* Error Spike inline banner */}
         {errorSpike && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-red-50 border border-red-200 rounded-xl flex-shrink-0">
+          <div 
+            onClick={handleAnalyzeSpike}
+            className="flex items-center gap-2 px-3 py-1 bg-red-50 border border-red-200 rounded-xl flex-shrink-0 cursor-pointer hover:bg-red-100 hover:border-red-300 transition-all duration-150 active:scale-95"
+            title="Click to analyze error spike with Gemini AI"
+          >
             <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping flex-shrink-0" />
-            <span className="text-red-600 text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
+            <span className="text-red-600 text-[9px] font-black uppercase tracking-widest whitespace-nowrap flex items-center gap-1">
               Error Spike — {errorSpikeCount} in 10s
+              <Sparkles className="w-2.5 h-2.5 text-red-500 animate-pulse" />
+              <span className="text-[8px] lowercase font-normal opacity-70">(click to analyze)</span>
             </span>
-            <button onClick={() => setErrorSpike(false)} className="text-red-300 hover:text-red-500 transition-colors ml-1">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setErrorSpike(false); }} 
+              className="text-red-300 hover:text-red-500 transition-colors ml-1"
+              title="Dismiss"
+            >
               <X className="w-3 h-3" />
             </button>
           </div>
         )}
+
 
         <div className="flex-1" />
 
@@ -444,6 +591,101 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
 
       {/* Terminal — dark background for log readability */}
       <div ref={terminalRef} className="flex-1 min-h-0 w-full overflow-hidden select-text cursor-text" />
+
+      {/* AI Diagnostic Modal — fullscreen */}
+      {showAnalysisModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-6xl bg-white rounded-[2rem] shadow-[0_32px_80px_-10px_rgba(15,23,42,0.35),_0_0_60px_rgba(14,165,233,0.12)] border border-slate-100 flex flex-col h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-300 ease-out">
+
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-10 py-6 border-b border-slate-100 bg-slate-50/60 flex-shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-sky-500 via-purple-500 to-indigo-500 shadow-lg shadow-indigo-500/20">
+                  <Sparkles className="w-6 h-6 text-white animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">
+                    PulseLog AI Diagnostic
+                  </h3>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                    Powered by Groq · Llama 3.3 70B
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAnalysisModal(false)}
+                className="p-2.5 rounded-2xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition-all duration-200 active:scale-90"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-10 py-8 select-text">
+              {/* Metadata strip */}
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500" />
+                  <span>Severity: <span className="text-red-500">Critical</span></span>
+                </div>
+                <div>
+                  <span>Source: {sourceId?.split('/').pop()?.toUpperCase() || 'UNKNOWN'}</span>
+                </div>
+                <div>
+                  <span>Time: {new Date().toLocaleTimeString()}</span>
+                </div>
+              </div>
+
+              {isAnalyzing ? (
+                <div className="flex flex-col items-center justify-center py-32 space-y-6">
+                  <div className="relative flex items-center justify-center">
+                    <div className="absolute w-16 h-16 rounded-full border-4 border-sky-500/10 animate-ping" />
+                    <div className="w-14 h-14 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <p className="text-sm font-black text-slate-600 uppercase tracking-widest animate-pulse">
+                      Analyzing Log Incident
+                    </p>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                      Consulting neural systems engine...
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {analysisReport ? (
+                    <div className="max-w-none">
+                      {renderMarkdown(analysisReport)}
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 text-center py-16 text-base">No analysis report available.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-10 py-5 border-t border-slate-100 bg-slate-50/60 flex justify-between items-center flex-shrink-0">
+              {analysisReport && !isAnalyzing ? (
+                <button
+                  onClick={() => navigator.clipboard.writeText(analysisReport)}
+                  className="px-5 py-3 text-sm font-black text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-all duration-200 active:scale-95 flex items-center gap-2 border border-indigo-100"
+                >
+                  Copy Entire Report
+                </button>
+              ) : <div />}
+              <button
+                onClick={() => setShowAnalysisModal(false)}
+                className="px-6 py-3 text-sm font-black text-slate-700 bg-white border border-slate-200 rounded-2xl hover:bg-slate-100 hover:border-slate-300 transition-all duration-200 shadow-sm active:scale-95"
+              >
+                Close Diagnostic
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
+
 }

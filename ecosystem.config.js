@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'pulselog',
       script: 'server.js',
-      cwd: '/home/kamalesh/central-log-viewer',
+      cwd: '/root/central-log-viewer',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
