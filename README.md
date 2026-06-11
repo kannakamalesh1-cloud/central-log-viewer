@@ -86,13 +86,30 @@ To fully secure your instance:
    PulseLog will automatically detect this file.
 
 ### 4. Linux Target Server Preparation
-For each Linux server you want to monitor, PulseLog requires the `log-wrapper.sh` script to be present:
-1. Copy `log-wrapper.sh` to the home directory of the SSH user on the target server.
-2. Make it executable: `chmod +x ~/log-wrapper.sh`.
-3. (Optional but Recommended) Restrict the SSH key in `~/.ssh/authorized_keys`:
-   ```ssh
-   command="./log-wrapper.sh",no-port-forwarding,no-X11-forwarding ssh-rsa AAA...
+
+You can register a remote Linux server either by using the automated one-line installer (recommended) or performing a manual setup.
+
+#### Option A: One-Line Automation Setup (Recommended)
+This uses a secure, single-use, time-restricted registration token generated from the admin dashboard to configure the node automatically:
+1. In the sidebar, click the **`+` (Add Server)** button.
+2. Copy the generated one-line command displayed under **One-Line Automation Setup**:
+   ```bash
+   curl -fsSL -k "https://<pulselog-server>/api/setup-node?token=<token>" | bash
    ```
+3. Run this command on the target server. It will automatically:
+   - Create directories and deploy the secure `log-wrapper.sh` wrapper script.
+   - Configure key-based SSH authorization with secure execution restrictions.
+   - Detect the node's hostname/IP and automatically register it back to the PulseLog dashboard database.
+
+#### Option B: Manual Configuration Setup
+If you prefer to configure nodes manually or are restricted from running installation scripts:
+1. Copy the `log-wrapper.sh` script from the PulseLog root directory to the home directory of the SSH user on the target server.
+2. Make it executable: `chmod +x ~/log-wrapper.sh`.
+3. Locate the Master SSH Public Key from the admin settings and restrict it in the target node's `~/.ssh/authorized_keys` file by prepending the command filter:
+   ```ssh
+   command="/path/to/log-wrapper.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAA...
+   ```
+4. Fill in the server credentials (Host IP, SSH Port, User, and SSH Key) manually in the **Add Server** panel inside the PulseLog dashboard, and click **Save**.
 
 ### 5. Windows Target Server Preparation
 To monitor a Windows machine, you must enable OpenSSH and (optionally) install the security wrapper:
@@ -141,8 +158,9 @@ Administrators can configure system settings via the **Admin Settings (gear icon
    - Create, edit, and categorize groups of servers (e.g., "Production", "Staging", "API Nodes").
    - Helps partition server lists and manage client/viewer visibility permissions dynamically.
 3. **Add Server (Plus)**:
-   - Onboard new Linux or Windows target nodes.
-   - Enter SSH host, port, username, and paste the private key. PulseLog automatically encrypts the key at rest (AES-256-GCM).
+   - Onboard new Linux or Windows target nodes using one of two methods:
+     - **Automated Setup:** Copy the generated one-line command and execute it directly on the remote Linux node to auto-enroll the server.
+     - **Manual Setup:** Enter target credentials (host IP, port, username) and paste the private key. PulseLog automatically encrypts all private keys at rest (AES-256-GCM).
    - Test connectivity immediately using the built-in **Test Connection** utility.
 
 ### Monitoring Logs
