@@ -24,7 +24,9 @@ Unlike traditional logging stacks that require complex agents and storage, Pulse
   - **Auto-Trigger Search**: Debounced input (400ms delay) automatically filters logs as you type, eliminating manual triggers.
   - **Instant Clear & Resume**: Embeds a clear button inside the search field to reset filters and immediately resume the live unfiltered log stream.
   - "Watch" keywords to highlight critical events in real-time.
-- **Anomaly Detection**: Error spike monitoring that alerts you if more than 3 errors occur in a 10-second window.
+- **🧠 AI Anomaly Diagnostics (Groq Llama-3.3)**: 
+  - Real-time error spike monitoring that alerts operators if more than 3 errors (e.g., `ERROR`, `CRITICAL`, `FATAL`) occur in a sliding 10-second window.
+  - One-click AI diagnosis (powered by Groq and the `llama-3.3-70b-versatile` model) to generate an objective, non-speculative incident summary, root-cause assessment, and actionable remediation steps.
 - **🛡️ Hardened Security**:
   - **AES-256-GCM** encryption for SSH private keys at rest.
   - **Restricted Execution**: Uses a security wrapper (`log-wrapper.sh`) on target servers to limit SSH access to log viewing only.
@@ -68,6 +70,7 @@ Create a `.env` file in the root directory:
 PORT=3000
 JWT_SECRET=your_ultra_secure_jwt_secret
 # ENCRYPTION_KEY can be here, but for better security, PulseLog looks for ~/.pulselog_key
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
 ### 4. Security Hardening (Recommended)
@@ -150,6 +153,12 @@ Administrators can configure system settings via the **Admin Settings (gear icon
 5. Use the **Pop-out** icon (↗️) to move a terminal to another monitor.
 6. Use the **Watch** input to highlight specific words (e.g., "ERROR" or "500").
 7. Toggle **Dim Mode** (◐) or adjust **Font Size** (A+/A-) for optimal viewing.
+
+### 🧠 AI Diagnostics & Error Spike Analysis
+1. When an error spike is detected (3+ errors in a 10-second window), a flashing red alert button **"Analyze Spike with AI"** will appear on the active terminal slot.
+2. Click this button to open the full-screen AI Diagnostic overlay.
+3. The system securely sends the log snippet surrounding the spike to the AI diagnostic proxy (using your configured `GROQ_API_KEY`).
+4. The generated report outlines the Root Cause, What Happened, and Recommended Actions (such as NGINX configuration adjustments or dependency installs).
 
 ### Security Auditing
 1. Go to the **Dashboard Overview**.

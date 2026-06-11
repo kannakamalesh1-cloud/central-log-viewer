@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
-import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon, Zap, Copy, Check, Folder, FolderOpen, Layers } from 'lucide-react';
+import { Server, Activity, Lock, Loader2, Plus, X, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ChevronRight, Trash2, Settings, RotateCw, Search, XCircle, LayoutDashboard, Users, Box, Cloud, Shield, Database, ChevronDown, HelpCircle, BookOpen, Globe, Info, Download, Cpu, HardDrive, Monitor, Clock, Terminal as TerminalIcon, Zap, Copy, Check, Folder, FolderOpen, Layers, Sparkles } from 'lucide-react';
 
 interface ServerData {
   id: number;
@@ -2132,6 +2132,32 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                   </div>
                 </div>
               </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center border border-pink-500/30">
+                    <Sparkles className="w-4 h-4 text-pink-500" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">AI Anomaly Diagnostics</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-4">
+                  PulseLog integrates AI-powered diagnostics for real-time error analysis.
+                </p>
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">1</div>
+                    <p className="text-xs text-slate-500 font-medium">Configure <span className="text-slate-900 font-mono text-[11px]">GROQ_API_KEY</span> in your server environment variables.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">2</div>
+                    <p className="text-xs text-slate-500 font-medium">When a spike occurs (3+ errors in 10s), the system exposes a diagnosis banner to operators.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">3</div>
+                    <p className="text-xs text-slate-500 font-medium">The diagnostic engine uses Llama 3.3 (70B) to compile objective incident summaries, root causes, and correct web-server configurations.</p>
+                  </div>
+                </div>
+              </section>
             </>
           ) : (
             <>
@@ -2178,6 +2204,32 @@ export default function Sidebar({ userRole, currentUserEmail, selectedServerId, 
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">
                       <span className="text-slate-900">Quick Recall:</span> Access your recently viewed log sources instantly via the <Clock className="inline w-3 h-3 mb-0.5" /> icon in the top header.
                     </p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white border border-slate-200 rounded-[24px] p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center border border-pink-500/30">
+                    <Sparkles className="w-4 h-4 text-pink-500" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">AI Incident Diagnostics</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium mb-4">
+                  PulseLog features intelligent error tracking to help you troubleshoot incidents faster.
+                </p>
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">1</div>
+                    <p className="text-xs text-slate-500 font-medium">If a stream registers 3 or more errors within 10 seconds, a red <span className="text-red-500 font-bold">Error Spike</span> button appears.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">2</div>
+                    <p className="text-xs text-slate-500 font-medium">Click the banner to send the surrounding log window for instant, secure AI analysis.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-400">3</div>
+                    <p className="text-xs text-slate-500 font-medium">Review the objective breakdown of the issue, what happened, and production-ready server fixes.</p>
                   </div>
                 </div>
               </section>
