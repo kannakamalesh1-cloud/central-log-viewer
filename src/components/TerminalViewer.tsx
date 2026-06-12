@@ -306,6 +306,105 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     a.click(); URL.revokeObjectURL(url);
   };
 
+  const downloadReportMarkdown = () => {
+    if (!analysisReport) return;
+    const content = `---
+title: PulseLog AI Diagnostic Report
+server: ${sourceId || 'Unknown'}
+date: ${new Date().toLocaleString()}
+---
+
+${analysisReport}`;
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pulselog_diagnostic_${sourceId || 'report'}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadReportPDF = () => {
+    if (!analysisReport) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const reportHtml = document.querySelector('.analysis-report-container')?.innerHTML || '';
+    
+    const htmlContent = `
+      <html>
+        <head>
+          <title>PulseLog AI Diagnostic Report</title>
+          <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+          <style>
+            body { 
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+              padding: 40px; 
+              color: #1e293b; 
+              background-color: #ffffff;
+            }
+            .header-bar {
+              border-bottom: 2px solid #e2e8f0;
+              padding-bottom: 16px;
+              margin-bottom: 24px;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+            }
+            .logo-text {
+              font-size: 1.5rem;
+              font-weight: 900;
+              color: #4f46e5;
+              letter-spacing: -0.025em;
+            }
+            .meta-text {
+              font-size: 0.75rem;
+              color: #64748b;
+              text-align: right;
+            }
+            h2, h3, h4 { font-weight: 800; color: #0f172a; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+            h2 { font-size: 1.25rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; }
+            h3 { font-size: 1.1rem; }
+            h4 { font-size: 0.95rem; }
+            p { font-size: 0.875rem; color: #475569; line-height: 1.6; margin-bottom: 0.75rem; }
+            ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+            li { font-size: 0.875rem; color: #475569; margin-bottom: 0.25rem; }
+            code { font-family: monospace; font-size: 0.85rem; background-color: #f1f5f9; padding: 2px 4px; border-radius: 4px; color: #0f172a; }
+            pre { background-color: #0f172a; color: #f8fafc; padding: 16px; border-radius: 12px; font-family: monospace; font-size: 0.825rem; overflow-x: auto; margin: 16px 0; }
+            pre code { background: none; color: inherit; padding: 0; }
+            @media print {
+              @page { margin: 0; }
+              body { padding: 1.5cm; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header-bar">
+            <div>
+              <div class="logo-text">PULSELOG AI DIAGNOSTIC</div>
+              <div style="font-size: 0.85rem; color: #64748b; font-weight: 600;">POWERED BY GROQ &middot; LLAMA 3.3 70B</div>
+            </div>
+            <div class="meta-text">
+              <strong>Source:</strong> ${sourceId || 'Unknown Server'}<br>
+              <strong>Date:</strong> ${new Date().toLocaleString()}
+            </div>
+          </div>
+          <div>
+            ${reportHtml}
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   const renderMarkdown = (text: string) => {
     if (!text) return null;
     
@@ -654,7 +753,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
               ) : (
                 <div>
                   {analysisReport ? (
-                    <div className="max-w-none">
+                    <div className="max-w-none analysis-report-container select-text">
                       {renderMarkdown(analysisReport)}
                     </div>
                   ) : (
@@ -667,16 +766,30 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
             {/* Modal Footer */}
             <div className="px-10 py-5 border-t border-slate-100 bg-slate-50/60 flex justify-between items-center flex-shrink-0">
               {analysisReport && !isAnalyzing ? (
-                <button
-                  onClick={() => navigator.clipboard.writeText(analysisReport)}
-                  className="px-5 py-3 text-sm font-black text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-all duration-200 active:scale-95 flex items-center gap-2 border border-indigo-100"
-                >
-                  Copy Entire Report
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => navigator.clipboard.writeText(analysisReport)}
+                    className="px-5 py-3 text-sm font-black text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-all duration-200 active:scale-95 flex items-center gap-2 border border-indigo-100 cursor-pointer"
+                  >
+                    Copy Entire Report
+                  </button>
+                  <button
+                    onClick={downloadReportMarkdown}
+                    className="px-5 py-3 text-sm font-black text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-2xl transition-all duration-200 active:scale-95 flex items-center gap-2 border border-sky-100 cursor-pointer"
+                  >
+                    Download Markdown
+                  </button>
+                  <button
+                    onClick={downloadReportPDF}
+                    className="px-5 py-3 text-sm font-black text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-2xl transition-all duration-200 active:scale-95 flex items-center gap-2 border border-purple-100 cursor-pointer"
+                  >
+                    Save as PDF
+                  </button>
+                </div>
               ) : <div />}
               <button
                 onClick={() => setShowAnalysisModal(false)}
-                className="px-6 py-3 text-sm font-black text-slate-700 bg-white border border-slate-200 rounded-2xl hover:bg-slate-100 hover:border-slate-300 transition-all duration-200 shadow-sm active:scale-95"
+                className="px-6 py-3 text-sm font-black text-slate-700 bg-white border border-slate-200 rounded-2xl hover:bg-slate-100 hover:border-slate-300 transition-all duration-200 shadow-sm active:scale-95 cursor-pointer"
               >
                 Close Diagnostic
               </button>
