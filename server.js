@@ -774,7 +774,6 @@ app.prepare().then(async () => {
       const totalErrors = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
       
       // Whitelist of known harmless client-side scanner errors (discounted from general error count)
-      const lines = logs.split('\n');
       let harmlessErrorCount = 0;
       for (const line of lines) {
         if (/invalid\s+Header\s+provided|Invalid\s+HTTP\s+Version|Invalid\s+HTTP\s+request\s+line:\s*''/i.test(line)) {
