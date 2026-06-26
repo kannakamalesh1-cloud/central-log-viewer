@@ -67,6 +67,8 @@ function decrypt(text) {
   return decrypted;
 }
 
+SSHController.setDecryptFunction(decrypt);
+
 /**
  * Reads ADMIN_EMAILS directly from the .env file on disk every time it is called.
  * This allows changes to .env to take effect without restarting the server.
@@ -316,8 +318,6 @@ app.prepare().then(async () => {
           }
         }
 
-        if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
-
         try {
           await dbRun('INSERT INTO audit_logs (userEmail, serverId, serverName, logType, sourceId) VALUES (?, ?, ?, ?, ?)',
             [socket.user.email, serverId, serverConfig.name, logType, sourceId]);
@@ -534,6 +534,38 @@ app.prepare().then(async () => {
     res.json({ success: true });
   });
 
+  // 2. SRE Memory-Safe LRU Diagnostic Cache
+  const diagnosticCache = new Map();
+  const CACHE_CLEANUP_INTERVAL = 60000; // 1 minute
+
+  // Periodically clean up expired cache entries to prevent memory leaks
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of diagnosticCache.entries()) {
+      if (now > value.expiresAt) {
+        diagnosticCache.delete(key);
+      }
+    }
+  }, CACHE_CLEANUP_INTERVAL);
+
+  // 3. SRE Semantic Log Pruning Helper (Maximizes token density and removes noise)
+  function pruneLogs(logText) {
+    if (!logText) return '';
+    const lines = String(logText).split('\n');
+    const prunedLines = lines.filter(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+
+      // Filter out high-frequency successful static asset and health check traffic
+      if (/\/(healthz|health|ping|status)\b.*200/i.test(trimmed)) return false;
+      if (/\.(css|js|png|jpe?g|gif|svg|ico|woff2?|map)\b.*(200|304)/i.test(trimmed)) return false;
+      
+      return true;
+    });
+    
+    return prunedLines.join('\n');
+  }
+
   // Groq Error Spike Analysis API (Free — Llama 3.3 70B)
   server.post('/api/analyze-error', authenticateToken, async (req, res) => {
 
@@ -547,20 +579,552 @@ app.prepare().then(async () => {
       return res.status(500).json({ error: 'Groq API key is not configured. Add GROQ_API_KEY to .env' });
     }
 
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert Senior Site Reliability Engineer and Systems Administrator.
-Your job is to analyze server/application log snippets and produce a detailed, objective, and highly accurate incident report.
+    // Prune logs of noise to optimize token usage and generate cache hash
+    const cleanedLogs = pruneLogs(logs);
+
+    // Generate unique hash of the cleaned logs
+    const crypto = require('crypto');
+    const logHash = crypto.createHash('sha256').update(cleanedLogs).digest('hex');
+
+    // Check LRU Cache
+    const cachedResponse = diagnosticCache.get(logHash);
+    if (cachedResponse && Date.now() < cachedResponse.expiresAt) {
+      console.log('[SRE Cache] Serving diagnostic report from memory cache.');
+      return res.json(cachedResponse.data);
+    }
+
+    // 1. JavaScript Severity Scoring Engine (Weighted Multi-Factor Heuristic)
+    function calculateSeverity(logText) {
+      const logs = String(logText);
+      let score = 0;
+
+      // Tier A: Catastrophic System & Container Events (+50 to +60)
+      if (/OOMKilled|Out of memory/i.test(logs)) {
+        score += 60;
+      }
+      if (/Segmentation fault|SIGSEGV|kernel panic|OOM\s*kill/i.test(logs)) {
+        score += 60;
+      }
+      if (/CrashLoopBackOff/i.test(logs)) {
+        score += 50;
+      }
+
+      // Tier B: Critical Server & Thread Failures (+40)
+      if (/WORKER TIMEOUT/i.test(logs)) {
+        score += 40;
+      }
+      if (/SIGKILL.*Perhaps out of memory/i.test(logs)) {
+        score += 15; // Unconfirmed/suggestive signal
+      }
+      if (/Failed to connect|Connection refused/i.test(logs)) {
+        score += 15;
+      }
+
+      // Tier C: General Application Errors & Exceptions (+5 to +8 per instance)
+      // Uses lookaheads to ignore healthy metrics (e.g., "failed=0", "errors=0")
+      const errorMatches = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
+      const failedMatches = (logs.match(/\bfailed(?![:=]\s*(0|false)\b)\b/gi) || []).length;
+      const exceptionMatches = (logs.match(/\bexception\b/gi) || []).length;
+      score += errorMatches * 5;
+      score += failedMatches * 5;
+      score += exceptionMatches * 8;
+
+      // Tier D: Bad Requests, Client Errors, and Parser Warnings (+1 to +3)
+      if (/request parse error/i.test(logs)) {
+        score += 3;
+      }
+      if (/\b404\b/.test(logs)) {
+        score += 2;
+      }
+      if (/telemetry.*Failed/i.test(logs)) {
+        score += 1;
+      }
+
+      // Tier E: General warnings (+3 per instance)
+      const warningMatches = (logs.match(/\b(UserWarning|DeprecationWarning|Warning|WARN)\b/gi) || []).length;
+      score += warningMatches * 3;
+
+      // Tier F: Healthy Signals & Success Discounts (-0.5 per success log)
+      // High volume of healthy traffic actively discounts the severity, preventing false positives
+      const success200 = (logs.match(/ 200 /g) || []).length;
+      const success201 = (logs.match(/ 201 /g) || []).length;
+      const successOk = (logs.match(/\b(success|ok|passed)(?![:=]\s*(0|false)\b)\b/gi) || []).length;
+      score -= success200 * 0.5;
+      score -= success201 * 0.5;
+      score -= successOk * 0.5;
+
+      // Prevent Warning Floods from escalating to HIGH/CRITICAL if there are no errors/failures
+      const hasCriticalSignals = /OOMKilled|Out of memory|Segmentation fault|SIGSEGV|kernel panic|OOM\s*kill|CrashLoopBackOff/i.test(logs);
+      const hasServerFailures = /WORKER TIMEOUT|Failed to connect|Connection refused/i.test(logs);
+      const hasErrorsOrExceptions = errorMatches > 0 || failedMatches > 0 || exceptionMatches > 0;
+
+      if (!hasCriticalSignals && !hasServerFailures && !hasErrorsOrExceptions) {
+        // Cap the score at 39 (maximum MEDIUM severity) if no actual errors or failures exist
+        if (score >= 40) {
+          score = 39;
+        }
+      }
+
+      // Severity Mapping
+      if (score >= 80)
+        return "CRITICAL";
+      if (score >= 40)
+        return "HIGH";
+      if (score >= 10)
+        return "MEDIUM";
+      if (score > 0)
+        return "LOW";
+      
+      return "INFO"; // Perfect operational state
+    }
+
+    // 2. JavaScript Category Detector
+    function detectCategory(logText) {
+      const logStr = String(logText);
+
+      if (/firestore/i.test(logStr))
+        return "DEPENDENCY";
+
+      if (/postgres|mysql|redis|mongodb/i.test(logStr))
+        return "DATABASE";
+
+      if (/docker/i.test(logStr))
+        return "DOCKER";
+
+      if (/CrashLoopBackOff|kubectl|pod/i.test(logStr))
+        return "KUBERNETES";
+
+      if (/nginx|502|504/i.test(logStr))
+        return "WEB";
+
+      if (/ssh|permission denied|auth/i.test(logStr))
+        return "SECURITY";
+
+      return "APPLICATION";
+    }
+
+    // Heuristic Helper to analyze security states based on log patterns
+    // This state machine classifies logs into one of three enterprise SOC security tiers:
+    // 1. COMPROMISED: Active attack payloads (RCE/shell) or successful access (200/201) to sensitive paths.
+    // 2. SUSPICIOUS: Probes to sensitive paths resulting in 3xx redirects (potential data exposure).
+    // 3. PROTECTED: Automated scans to sensitive paths successfully blocked by Nginx/app (401/403/404).
+    function evaluateSecurityState(logText) {
+      const logs = String(logText);
+
+      // 1. Critical Attack Indicators (RCE, Shell execution, Privilege Escalation)
+      // Any presence of these signatures represents an active threat attempt and must never be classified as routine.
+      const CRITICAL_ATTACK_REGEX = /\/bin\/sh\b|bash\s+-c\b|curl\s+[^|]*\|\s*sh\b|sudo\s+|chmod\s+(?:[0-7]{3,4}|[+-][rwx]+)\s+|nc\s+-e\b|python\s+-c\b|eval\(\s*|exec\(\s*/i;
+      if (CRITICAL_ATTACK_REGEX.test(logs)) {
+        return 'COMPROMISED';
+      }
+
+      // 2. Expanded Sensitive Path Signatures
+      const SENSITIVE_PATH_REGEX = /\.(env|git|config|bak|ini|sql|zip|tar|gz|rar|log)\b|wp-admin|wp-login|phpmyadmin|admin|setup|config|backup|secrets|credential|etc\/passwd|id_rsa|docker-compose|kubeconfig|jenkins|grafana|prometheus/i;
+
+      let hasSensitiveSuccess = false;
+      let hasSensitiveRedirect = false;
+      
+      const lines = logs.split('\n');
+      for (const line of lines) {
+        const isTarget = SENSITIVE_PATH_REGEX.test(line);
+        if (isTarget) {
+          // 200/201 indicates the secret was successfully exposed!
+          if (/\b(200|201)\b/.test(line)) {
+            hasSensitiveSuccess = true;
+          }
+          // Redirects (301, 302, 307, 308) are highly suspicious as they may route to exposed static directories.
+          if (/\b(301|302|307|308)\b/.test(line)) {
+            hasSensitiveRedirect = true;
+          }
+        }
+      }
+
+      if (hasSensitiveSuccess) {
+        return 'COMPROMISED';
+      }
+      
+      if (hasSensitiveRedirect) {
+        return 'SUSPICIOUS';
+      }
+
+      // Check if it qualifies as a Protected Blocked Scan
+      // Hard signals of system failures, active crashes, or tracebacks must fall back to standard error handling.
+      const hasCrashes = /OOMKilled|Out of memory|Segmentation fault|SIGSEGV|kernel panic|OOM\s*kill|CrashLoopBackOff|WORKER TIMEOUT/i.test(logs);
+      const errorCount = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
+      const exceptionCount = (logs.match(/\bexception\b/gi) || []).length;
+      const tracebackCount = (logs.match(/\btraceback\b/gi) || []).length;
+
+      if (hasCrashes || errorCount > 3 || exceptionCount > 0 || tracebackCount > 0) {
+        return 'STANDARD_ERROR';
+      }
+
+      // Count HTTP status codes for blocked scans
+      const blocked401 = (logs.match(/\b401\b/g) || []).length;
+      const blocked403 = (logs.match(/\b403\b/g) || []).length;
+      const blocked404 = (logs.match(/\b404\b/g) || []).length;
+      const blocked400 = (logs.match(/\b400\b/g) || []).length;
+      const totalBlocked = blocked401 + blocked403 + blocked404 + blocked400;
+
+      const success200 = (logs.match(/\b200\b/g) || []).length;
+      const success201 = (logs.match(/\b201\b/g) || []).length;
+      const success304 = (logs.match(/\b304\b/g) || []).length;
+      const totalSuccess = success200 + success201 + success304;
+
+      const totalRequests = totalBlocked + totalSuccess;
+      const hasScannerTargets = SENSITIVE_PATH_REGEX.test(logs);
+
+      if (totalBlocked > 0) {
+        if (hasScannerTargets && totalSuccess === 0) return 'PROTECTED';
+        if (totalRequests > 0 && (totalBlocked / totalRequests) >= 0.8) return 'PROTECTED';
+      }
+
+      return 'STANDARD_ERROR';
+    }
+
+    const securityState = evaluateSecurityState(logs);
+    let severity, category, incident, confidence;
+
+    if (securityState === 'COMPROMISED') {
+      severity = 'CRITICAL';
+      category = 'SECURITY';
+      incident = true;
+      confidence = 95;
+    } else if (securityState === 'SUSPICIOUS') {
+      severity = 'MEDIUM';
+      category = 'SECURITY';
+      incident = true;
+      confidence = 90;
+    } else if (securityState === 'PROTECTED') {
+      severity = 'LOW';
+      category = 'SECURITY';
+      incident = false;
+      confidence = 95;
+    } else {
+      // Standard Heuristic Evaluation
+      severity = calculateSeverity(logs);
+      category = detectCategory(logs);
+      incident = severity === 'HIGH' || severity === 'CRITICAL';
+      confidence = severity === 'INFO' ? 98 : severity === 'LOW' ? 95 : severity === 'MEDIUM' ? 90 : 85;
+    }
+    
+    let systemPrompt = '';
+
+    // 3. Dynamic System Prompt Router (Standardized SRE Structures)
+    if (securityState === 'PROTECTED') {
+      systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE) and Security Operations (SecOps) specialist.
+Your job is to analyze the provided log snippet and generate a professional, objective "Security Event Report".
+
+The logs indicate that your application or reverse proxy successfully rejected unauthorized requests or automated reconnaissance scanning. The system is working exactly as designed and has protected your assets.
+
+Format your response EXACTLY like this:
+## 🛡️ Security Event Report
+### Status: Protected
+### Severity: LOW
+### Category: SECURITY / RECONNAISSANCE
+### Active Incidents: No
+
+You MUST write the status EXACTLY as "Protected", severity EXACTLY as "LOW", and active incidents EXACTLY as "No". Do NOT change or override these values under any circumstances, as they are hard-synchronized with the user interface dashboard cards.
+
+---
+### Summary
+[Provide a clear, objective summary of the blocked access attempts. Explicitly state that all probes were successfully rejected with HTTP 401/403/404 responses, indicating that the system's defenses are active and functioning correctly.]
+
+### Operational Impact
+Impact: None.
+The application remained fully available and correctly blocked all unauthorized access attempts.
+- Evidence of Compromise: NONE
+- Authentication Bypass: No evidence in logs
+- Data Exposure: No evidence in logs
+- Service Degradation: No evidence in logs
+
+### Threat Assessment
+Threat Type: Automated reconnaissance / internet scanning
+Confidence: HIGH
+Evidence: Repeated requests to sensitive resources returning 401/403/404.
+
+### Recommended Hardening
+[Provide detailed security hardening suggestions. Recommend industry-standard application-layer rate limiting (like Nginx's "limit_req_zone"), Fail2ban, or Cloudflare WAF configurations.
+You MUST provide a configuration modernization example showing a side-by-side or before-and-after comparison.
+Use EXACTLY the following format:
+# ❌ Deprecated/Weak Config
+[Snippet]
+# ✅ Hardened/Correct Config
+[Snippet]
+]
+
+### Investigation Required
+The requests originate from external IPs. Do NOT search your application code repository for these paths, as they represent external scanning activity rather than internal code bugs.
+
+Suggested commands to audit the scan origin and volume:
+\`\`\`bash
+# View Nginx access logs for 401/403 blocks:
+grep -E "401|403" /var/log/nginx/*access.log
+
+# Inspect the target of .env probes:
+grep ".env" /var/log/nginx/*access.log 2>/dev/null
+
+# Check active connection sockets on the host:
+ss -tan | grep -E ":80|:443"
+\`\`\`
+
+### Maintenance Priority
+LOW. Routine security hardening recommended. No emergency action required.
+
+### Evidence Quality
+Evidence Strength: HIGH
+Reason:
+- Clear logs showing HTTP 401/403/404 rejection codes.
+- No evidence of successful authentication or access.
+- No tracebacks or internal system errors.
+
+### Confidence
+Confidence: 95%
+Reason:
+- The rejection logs are unambiguous.
+- The request pattern matches known automated scanning behaviors.
+
+### Fix Confidence
+Fix Confidence: HIGH
+Reason:
+- Hardening reverse proxies and applying rate limits are well-established, highly effective measures against scanning noise.
+
+### Operator Recommendation
+Specify concrete operator actions:
+- Verify your Nginx configuration syntax.
+- Schedule routine rate-limiting and WAF updates.
+- Monitor access logs for elevated volume.`;
+    }
+    else if (securityState === 'SUSPICIOUS') {
+      systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE) and Security Operations (SecOps) specialist.
+Your job is to analyze the provided log snippet and generate a professional "Suspicious Security Event Report".
+
+The logs indicate that an external client attempted to access highly sensitive paths (like configuration files, admin panels, or credentials), and the server responded with an HTTP 3xx Redirect (301, 302, 307, or 308). In security engineering, redirects of sensitive endpoints are highly suspicious as they may expose secrets if they redirect to an unprotected public directory.
+
+Format your response EXACTLY like this:
+## 🛡️ Security Event Report
+### Status: Suspicious (Investigate Redirects)
+### Severity: MEDIUM
+### Category: SECURITY / RECONNAISSANCE
+### Active Incidents: Yes
+
+You MUST write the status EXACTLY as "Suspicious (Investigate Redirects)", severity EXACTLY as "MEDIUM", and active incidents EXACTLY as "Yes". Do NOT change or override these values under any circumstances, as they are hard-synchronized with the user interface dashboard cards.
+
+---
+### Summary
+[Provide a clear, objective summary of the suspicious redirects. Detail which sensitive paths were requested and where they redirect. Note that while the request was not directly answered with a 200, the redirect must be audited to ensure no data exposure occurred.]
+
+### Operational Impact
+Impact: Potential Data Exposure.
+The system did not return a direct success code, but the redirect behavior represents a potential bypass or exposure risk if the target path is public.
+- Evidence of Compromise: UNCONFIRMED (Requires audit)
+- Redirect Risk Level: HIGH (Audit redirect target directories)
+- Service Degradation: None visible in logs
+
+### Threat Assessment
+Threat Type: Suspicious redirection of sensitive paths
+Confidence: HIGH
+Evidence: HTTP 3xx responses for sensitive resource requests.
+
+### Recommended Hardening
+[Provide detailed hardening steps, focusing on:
+1. Auditing Nginx redirect rules to ensure they do not expose secrets.
+2. Replacing redirects of sensitive paths with a direct "403 Forbidden" or "404 Not Found" response.
+3. Implementing Nginx rate-limiting and WAF filters.
+Show a before-and-after Nginx configuration block using the # ❌ Deprecated/Weak Config and # ✅ Hardened/Correct Config format.]
+
+### Investigation Required
+The requests originate from external IPs seeking sensitive files. Audit your Nginx configuration rules immediately to trace why these paths are redirecting rather than being denied.
+
+Suggested commands to audit your configuration and access logs:
+\`\`\`bash
+# Search your Nginx configuration files for redirect rules (return 301/302/rewrite):
+grep -R -E "301|302|rewrite" /etc/nginx/
+
+# Identify the exact target and volume of the redirect probes:
+grep -E "301|302" /var/log/nginx/*access.log | grep -i -E "env|git|admin|config"
+
+# Check active connections:
+ss -tan | grep -E ":80|:443"
+\`\`\`
+
+### Maintenance Priority
+MEDIUM. Prompt investigation of Nginx redirect behavior is recommended.
+
+### Evidence Quality
+Evidence Strength: HIGH
+Reason:
+- Explicit HTTP 3xx redirection codes in response to sensitive resource probes.
+- Source IPs are external.
+
+### Confidence
+Confidence: 90%
+Reason:
+- The request paths are clearly targeted at sensitive assets.
+- Redirects are confirmed by the logs.
+
+### Fix Confidence
+Fix Confidence: HIGH
+Reason:
+- Changing Nginx rules to return 403 instead of redirecting is simple, safe, and highly effective.
+
+### Operator Recommendation
+Specify concrete operator actions:
+- Audit Nginx server blocks for loose \`rewrite\` or \`return 301\` rules.
+- Change redirects of sensitive paths to a direct \`deny all;\` or \`return 403;\`.
+- Reload Nginx and verify via curl.`;
+    }
+    else if (severity === 'INFO') {
+      systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE).
+Your job is to analyze the provided logs and generate a professional, reassuring "System Health Report".
+
+Format your response EXACTLY like this:
+## 🟢 System Health Report
+### Status: Operational
+### Severity: INFO
+### Category: ${category}
+### Active Incidents: None
+
+---
+### Summary
+[Provide a concise 2-3 sentence summary explaining why the system is operating normally and confirming that routine tasks are succeeding.]
+
+### Operational Impact
+Impact: None. All services, queues, and background workers are operating normally.
+
+### Why This Is Not An Incident
+The following indicators of a critical outage were NOT observed:
+- No worker crashes
+- No OOM kills
+- No restart loops
+- No elevated error rates
+- No failed health checks
+- No service unavailability
+
+### Recommended Maintenance
+None. The system is operating within normal parameters.
+
+### Maintenance Priority
+None.
+
+### Evidence Quality
+Evidence Strength: HIGH
+Reason:
+- Multiple clean, successful log entries observed.
+- No tracebacks, warnings, or errors present in the log snippet.
+- Core services executing successfully.
+
+### Confidence
+Confidence: ${confidence}%
+Reason:
+- All services and background workers are executing successfully.
+- No warnings, errors, or anomalies are present in the log snippet.
+
+### Fix Confidence
+Fix Confidence: HIGH
+Reason:
+- No maintenance or fixes are required for this healthy state.
+
+### Operator Recommendation
+No action required during active operations. All systems are performing normally.`;
+    } 
+    else if (severity === 'LOW' || severity === 'MEDIUM') {
+      systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE).
+Your job is to analyze the provided logs and generate a professional "Maintenance Recommendation".
+
+Format your response EXACTLY like this:
+## 🟡 Maintenance Recommendation
+### Status: Operational (Minor Issues Detected)
+### Severity: ${severity}
+### Category: ${category}
+### Active Incidents: None
+
+You MUST write the severity EXACTLY as "${severity}" and active incidents EXACTLY as "None". Do NOT change or override these values under any circumstances, as they are hard-synchronized with the user interface dashboard cards.
+
+---
+### Summary
+[Provide a brief summary of the warning or deprecation detected in the logs. Note: The logs clearly identify the warning mechanism but do not reveal the exact source file or application code responsible.]
+
+### Operational Impact
+Impact: None. This warning does not affect:
+- Application availability
+- Scheduled tasks or cron jobs
+- Core database/queue processing
+
+### Why This Is Not An Incident
+The following indicators of a critical outage were NOT observed:
+- No worker crashes
+- No OOM kills
+- No restart loops
+- No elevated error rates
+- No failed health checks
+- No service unavailability
+
+### Suggested Code Modernization
+[You MUST provide a code/configuration modernization example showing a side-by-side or before-and-after comparison in the exact language/technology of the log (e.g. JavaScript, Python, SQL, Nginx config, Dockerfile).
+Use EXACTLY the following formats:
+- For application code warnings:
+  # ❌ Old (Deprecated/Unsafe Code)
+  [Snippet]
+  # ✅ New (Modern/Safe Code)
+  [Snippet]
+- For database/SQL query warnings:
+  # ❌ Old Query
+  [Snippet]
+  # ✅ Optimized Query
+  [Snippet]
+- For infrastructure configuration warnings (Nginx, Docker, WAF):
+  # ❌ Deprecated/Weak Config
+  [Snippet]
+  # ✅ Hardened/Correct Config
+  [Snippet]
+
+Specific Override Rule:
+If (and only if) the logs contain the Python Firestore positional arguments warning, you MUST recommend ONLY the following exact migration example:
+# ❌ Old (Deprecated - triggers UserWarning)
+query = db.collection("your_collection").where("field_path", "==", "value")
+
+# ✅ New (Warning-free, production-grade)
+from google.cloud.firestore import FieldFilter
+
+query = db.collection("your_collection").where(
+    filter=FieldFilter("field_path", "==", "value")
+)
+Do NOT present multiple alternative syntaxes, do NOT suggest query.filter(), and do NOT recommend query.where(field_path, "==", value). Present ONLY this single correct fix. For all other warnings, generate the correct syntax for that specific warning.]
+
+### Investigation Required
+The logs indicate that some queries or operations are using deprecated patterns. The exact source file, line number, or application code responsible cannot be determined from logs alone.
+
+Suggested commands to locate the offending code in your repository:
+[Provide a list of highly specific, context-appropriate shell commands (using grep, find, npm, pip, etc.) in a \`\`\`bash block to help the operator locate the exact offending code or configuration in their repository based on the error. For example:
+- If a Node/npm warning: Suggest 'npm ls' or grep for the package.
+- If a Python warning: Suggest grep for the module or function name.
+- If Nginx/Docker: Suggest grep or find command for the configuration path.]
+
+### Maintenance Priority
+LOW. Can be addressed during routine maintenance. No immediate action required.
+
+### Evidence Quality
+Evidence Strength: [Specify HIGH, MEDIUM, or LOW]
+Reason:
+- [Provide 2-3 bullet points justifying the evidence strength rating based on logs, e.g., "The warning is explicitly present in the logs, identifying the warning mechanism but not the source file."]
+
+### Confidence
+Confidence: ${confidence}%
+Reason:
+- [Evidence 1, e.g., Warning explicitly present in logs]
+- [Evidence 2, e.g., All tasks completed successfully without service disruption]
+
+### Fix Confidence
+Fix Confidence: MEDIUM-HIGH
+Reason:
+- Compatible with modern SDK releases. Verify against your project's installed version before deployment.
+
+### Operator Recommendation
+No action required during active operations. Schedule this update as part of normal dependency maintenance.`;
+    } 
+    else if (severity === 'HIGH') {
+      systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE) and Systems Administrator.
+Your job is to analyze the provided log snippet and generate a highly accurate "Root Cause Analysis & Incident Report".
 
 Always follow these SRE analysis guidelines:
 1. Objectivity: Do not assume a server is compromised or call activity a "malicious attack" unless there is clear evidence of exploitation (e.g., successful remote code execution payloads or successful auth bypass). Refer to automated probes, scans, or hex packets as "automated reconnaissance, fingerprinting, or scanning activity". Always explicitly state if there is no evidence of successful exploitation in the log snippet.
@@ -575,119 +1139,306 @@ Always follow these SRE analysis guidelines:
    - Possible: A plausible explanation requiring further validation.
    - Speculative: An unproven hypothesis with insufficient log evidence.
 8. Root Cause Separation:
-Do not present the immediate failure mechanism as the underlying root cause unless causality is explicitly established by the logs.
-
-Always distinguish between:
-- Observed Symptoms
-- Immediate Failure Mechanism
-- Probable Root Causes
-
-If the underlying cause cannot be confirmed from the available evidence, clearly state this and classify the proposed causes using the Confidence Classification framework.
-
+   Do not present the immediate failure mechanism as the underlying root cause unless causality is explicitly established by the logs. Always distinguish between: Observed Symptoms, Immediate Failure Mechanism, and Probable Root Causes.
 9. Insufficient Evidence Handling:
-If the provided logs do not contain enough information to determine the underlying cause, explicitly state:
-
-"The available log evidence is insufficient to establish a confirmed root cause."
-
-Then identify the exact additional artifacts required for confirmation (for example: package manifests, dependency trees, service configurations, full stack traces, container metadata, Kubernetes describe output, reverse proxy configuration, or application startup logs).
-
+   If the provided logs do not contain enough information to determine the underlying cause, explicitly state: "The available log evidence is insufficient to establish a confirmed root cause." Then identify the exact additional artifacts required for confirmation.
 10. Post-Fix Validation:
-Every remediation path must include validation steps demonstrating whether the issue has been resolved.
-
-Examples:
-- npm ls <package>
-- npm run dev
-- nginx -t
-- curl -I <url>
-- systemctl status <service>
-- kubectl rollout status deployment/<name>
-
-Do not conclude a report without describing how success should be verified.
-
+    Every remediation path must include validation steps demonstrating whether the issue has been resolved (e.g. npm ls, nginx -t, curl, systemctl status).
 11. Diagnostic Priority:
-Recommend actions in the following order whenever possible:
-
-1. Inspect
-2. Verify
-3. Validate hypotheses
-4. Apply minimal corrective actions
-5. Apply disruptive fixes
-
-Avoid recommending destructive operations (such as deleting node_modules, purging caches, deleting pods, or restarting production services) as the initial remediation step unless the logs directly justify them.
-
+    Recommend actions in the following order: Inspect, Verify, Validate hypotheses, Apply minimal corrective actions, Apply disruptive fixes.
 12. Operational Impact Awareness:
-For remediation actions that may affect availability, explicitly note the operational impact.
-
-Examples:
-- Service restarts may cause temporary downtime.
-- Pod recreation may interrupt active requests.
-- Cache purges may increase startup latency.
-- Container rebuilds may extend deployment time.
-
-Recommend maintenance windows where appropriate.
-
+    For remediation actions that may affect availability, explicitly note the operational impact.
 13. Environment Awareness:
-Infer the execution environment from the logs and tailor recommendations accordingly.
-
-Examples:
-- Docker → docker inspect, docker compose logs, image verification, rebuild guidance.
-- Kubernetes → kubectl describe, events inspection, rollout status, pod logs.
-- Systemd/Linux → systemctl status, journalctl, service dependency checks.
-- Reverse proxies → nginx -t, apachectl configtest.
-
-Avoid environment-specific recommendations that conflict with the detected deployment model.
-
+    Infer the execution environment (Docker, Kubernetes, Systemd, Nginx) and tailor recommendations accordingly.
 14. Security Severity Classification:
-Classify suspicious activity using the following progression:
-
-- Automated reconnaissance
-- Suspicious activity
-- Attempted exploitation
-- Successful exploitation
-- Confirmed compromise
-
-Do not skip severity levels without direct supporting evidence.
-
-If exploitation cannot be confirmed, explicitly state:
-
-"There is no evidence of successful exploitation in the provided logs."
-
+    Classify suspicious activity using the following progression: Automated reconnaissance, Suspicious activity, Attempted exploitation, Successful exploitation, Confirmed compromise. If exploitation cannot be confirmed, explicitly state: "There is no evidence of successful exploitation in the provided logs."
 15. Evidence Formatting:
-Every major conclusion must include an Evidence subsection containing the exact supporting log excerpts.
+    Every major conclusion must include an Evidence subsection containing the exact supporting log excerpts (Timestamp, Source file/component, Exact log lines).
+16. Blocked Attacks Are Not Outages (Severity Evaluation):
+    If logs show that the application is successfully rejecting unauthorized requests (e.g., returning 401 Unauthorized, 403 Forbidden, or 400 Bad Request) and there are no signs of service degradation (no worker crashes, no restarts, no timeouts, no latency increase, or health-check failures), you MUST classify this as Severity: LOW or MEDIUM, Category: SECURITY / RECONNAISSANCE, and Active Incidents: No. Do not treat successfully blocked reconnaissance or auth failures as active production incidents.
+17. Private Network / Gateway Identification:
+    If the immediate source IP of the logs belongs to a private subnet or internal gateway (such as 172.x.x.x Docker bridge, 10.x.x.x Kubernetes pod network, 192.168.x.x, or 127.0.0.1), you MUST explicitly state in your analysis that this IP represents an internal proxy, container bridge, or gateway rather than the external client IP. Explicitly advise the operator against blocking this gateway IP directly at the firewall to avoid self-inflicted service outages.
+18. Ban Speculative Performance Impact:
+    Do not make speculative statements about performance degradation (e.g., 'this could lead to increased resource utilization' or 'potentially degrade performance') unless there is concrete evidence of system strain (OOMs, CPU spikes, slow responses, worker timeouts) in the provided logs. If no service degradation is visible, explicitly state: 'No service degradation is visible in the provided logs. The application successfully rejected unauthorized requests as expected.'
 
-Preferred format:
-Evidence:
-- Timestamp (if available)
-- Source file/component
-- Exact log line(s)
+Format your response EXACTLY like this:
+## 🔴 Root Cause Analysis & Incident Report
+### Status: Degraded / Failure
+### Severity: ${severity}
+### Category: ${category}
+### Active Incidents: Yes
 
-Do not make diagnoses without corresponding evidence.
+You MUST write the severity EXACTLY as "${severity}" and active incidents EXACTLY as "Yes". Do NOT change or override these values under any circumstances, as they are hard-synchronized with the user interface dashboard cards.
 
-Always structure your response with these exact sections using Markdown:
+---
+### Summary
+[Provide a clear, objective summary of the incident, including observed symptoms and immediate failure mechanism.]
 
-## 🔍 Root Cause Analysis
-### Observed Symptoms
-### Immediate Failure Mechanism
-### Probable Root Causes
-### Confidence Classification
-### Evidence
+### Operational Impact
+[State the exact operational impact on users, services, and queues.]
 
-## 📋 What Happened (Timeline)
+### Recommended Maintenance
+[Provide the detailed corrective action, rate limit configurations, or code fixes. Avoid presenting multiple contradictory fixes; present only the most optimal and validated path.
+You MUST provide a code/configuration modernization example showing a side-by-side or before-and-after comparison in the exact language/technology of the log (e.g. JavaScript, Python, SQL, Nginx config, Dockerfile).
+Use EXACTLY the following formats:
+- For application code bugs/crashes:
+  # ❌ Old (Unsafe/Buggy Code)
+  [Snippet]
+  # ✅ New (Corrected/Safe Code)
+  [Snippet]
+- For database/SQL query errors:
+  # ❌ Old Query
+  [Snippet]
+  # ✅ Optimized Query
+  [Snippet]
+- For infrastructure/network issues (Nginx, Docker, WAF):
+  # ❌ Deprecated/Weak Config
+  [Snippet]
+  # ✅ Hardened/Correct Config
+  [Snippet]
 
-## 🛠️ How to Fix It
+Specific Security Rule:
+If the logs represent automated reconnaissance (e.g., WAF blocks, scanners probing endpoints like /wp-admin, /env, /backup), do NOT suggest application code changes. Instead, focus the mitigation on WAF rules, Nginx rate-limiting (limit_req_zone), or Fail2ban setups.
 
-## ✅ Validation Steps
+Specific Override Rule:
+If (and only if) the logs contain the Python Firestore positional arguments warning, you MUST recommend ONLY the following exact migration example:
+# ❌ Old (Deprecated - triggers UserWarning)
+query = db.collection("your_collection").where("field_path", "==", "value")
 
-## 🛡️ How to Prevent It
+# ✅ New (Warning-free, production-grade)
+from google.cloud.firestore import FieldFilter
 
-Avoid generic disclaimers and filler text. However, explicitly state when the available evidence is insufficient to establish a confirmed root cause.`
+query = db.collection("your_collection").where(
+    filter=FieldFilter("field_path", "==", "value")
+)
+Do NOT present multiple alternative syntaxes, do NOT suggest query.filter(), and do NOT recommend query.where(field_path, "==", value). Present ONLY this single correct fix.]
+
+### Investigation Required
+The logs indicate a serious warning or failure. The exact source file, line number, or application code responsible cannot be determined from logs alone.
+
+Suggested commands to locate the offending code in your repository:
+[Provide a list of highly specific, context-appropriate shell commands (using grep, find, npm, pip, etc.) in a \`\`\`bash block to help the operator locate the exact offending code or configuration in their repository based on the error. For example:
+- If a Node/npm warning: Suggest 'npm ls' or grep for the package.
+- If a Python warning: Suggest grep for the module or function name.
+- If Nginx/Docker: Suggest grep or find command for the configuration path.]
+
+### Maintenance Priority
+HIGH. Action recommended to restore optimal operations.
+
+### Evidence Quality
+Evidence Strength: [Must be exactly HIGH, MEDIUM, or LOW]
+Reason:
+- [Provide 2-3 bullet points justifying the evidence strength rating based on logs]
+
+### Confidence
+Confidence: ${confidence}%
+Reason:
+- [Evidence 1]
+- [Evidence 2]
+
+### Fix Confidence
+Fix Confidence: [Must be exactly HIGH, MEDIUM, or LOW]
+Reason:
+- [A brief 1-sentence reason justifying the confidence level of the recommended fix.]
+
+### Operator Recommendation
+[Specify concrete operator actions: e.g., check process status, apply minimal corrective actions, reload services, or verify via curl.]
+
+---
+### Timeline of Events
+[List chronological sequence of events if visible in logs]
+
+### Technical Analysis
+#### Confidence Levels
+- **CONFIRMED**:
+  - [List facts directly supported by unambiguous log evidence, e.g., worker timeouts, worker restarts, malformed requests, no successful exploitation]
+- **HIGHLY LIKELY**:
+  - [List strong inferences supported by tracebacks/indicators, e.g., service degradation, temporary request failures]
+- **POSSIBLE**:
+  - [List plausible explanations requiring further validation, e.g., OOM conditions (unconfirmed), slow clients keeping sockets open, proxy/HTTP2 misconfigurations]
+- **UNSUPPORTED HYPOTHESES**:
+  - [List common causes/theories that are NOT supported by the current logs, e.g., Database deadlocks, DNS failures, Network partitions, Storage corruption, Successful exploitation attempts, explicitly stating they lack evidence in the current logs]
+
+#### Detailed Investigation
+- **Observed Symptoms**: [Observed symptoms]
+- **Immediate Failure Mechanism**: [Immediate failure mechanism, citing traceback details like sock.recv() during HTTP request parse]
+- **Probable Root Causes**: [Probable root causes, distinguishing between slow clients, HTTP/2 mismatch, and memory leaks]
+- **Evidence**: [Evidence citations in the format \`filename:line\`]
+
+### Validation Steps
+[Specify verification commands to validate the fix and prove/disprove the POSSIBLE items listed above, e.g., \`dmesg -T | grep -i oom\`, checking Nginx access logs, or inspecting Gunicorn configurations.]
+
+### Prevention Strategy
+[Outline long-term preventative measures to avoid recurrence]`;
+    } 
+    else if (severity === 'CRITICAL') {
+      systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE) and Systems Administrator.
+Your job is to analyze the provided logs and generate an urgent "Emergency Incident Report".
+The logs indicate a critical failure, crash, or potential security exploit. Your analysis must be highly precise, authoritative, and focused on rapid mitigation.
+
+Always follow these SRE analysis guidelines:
+1. Objectivity: Do not assume a server is compromised or call activity a "malicious attack" unless there is clear evidence of exploitation (e.g., successful remote code execution payloads or successful auth bypass). Refer to automated probes, scans, or hex packets as "automated reconnaissance, fingerprinting, or scanning activity". Always explicitly state if there is no evidence of successful exploitation in the log snippet.
+2. Correct Web Mitigations: Never suggest using "ufw limit" for HTTP/HTTPS web traffic (port 80 or 443), as it causes false positives for multi-asset web loads. Instead, recommend industry-standard application-layer rate limiting (like Nginx's "limit_req_zone"), Fail2ban, or Cloudflare WAF.
+3. Production Deployment: If logs show development servers (such as Python's Werkzeug, Node.js raw HTTP, etc.) directly exposed to the internet, always recommend putting a production-grade WSGI/ASGI server (e.g., Gunicorn, uWSGI) behind a reverse proxy (e.g., Nginx, Apache).
+4. Protocol Accuracy: Do not recommend changing protocol-level errors (like HTTP 400 Bad Request for bad syntax/versions) to application/authorization errors (like HTTP 403 Forbidden).
+5. Avoid Speculative Diagnosis: Do not assume a single fixed cause (such as asserting a package is simply outdated and needs upgrading) when the logs indicate general compatibility, path-resolution conflicts, or dependency tree misalignment. Instead, describe the exact mismatch (the caller file/line and target specifier that failed), outline all plausible scenarios (e.g. version incompatibility, stale build/package cache, or multiple nested package duplicates), and always prioritize verification commands (such as "npm ls <packages>", "pip list", or target dependency checks) as the very first step in the remediation instructions.
+6. Evidence Citation: Every major conclusion, claim, or diagnosis must reference the exact log line(s) supporting it under a dedicated "Evidence:" citation (e.g. \`node_modules/@vitejs/plugin-react/dist/index.js:246:33\`). Avoid making diagnoses without attaching the corresponding evidence.
+7. Confidence Classification: Every identified root-cause scenario must be assigned a confidence rating using one of the following exact labels:
+   - Confirmed: Directly supported by unambiguous log evidence.
+   - Highly Likely: Supported by strong indicators/tracebacks but not absolute proof.
+   - Possible: A plausible explanation requiring further validation.
+   - Speculative: An unproven hypothesis with insufficient log evidence.
+8. Root Cause Separation:
+   Do not present the immediate failure mechanism as the underlying root cause unless causality is explicitly established by the logs. Always distinguish between: Observed Symptoms, Immediate Failure Mechanism, and Probable Root Causes.
+9. Insufficient Evidence Handling:
+   If the provided logs do not contain enough information to determine the underlying cause, explicitly state: "The available log evidence is insufficient to establish a confirmed root cause." Then identify the exact additional artifacts required for confirmation.
+10. Post-Fix Validation:
+    Every remediation path must include validation steps demonstrating whether the issue has been resolved (e.g. npm ls, nginx -t, curl, systemctl status).
+11. Diagnostic Priority:
+    Recommend actions in the following order: Inspect, Verify, Validate hypotheses, Apply minimal corrective actions, Apply disruptive fixes.
+12. Operational Impact Awareness:
+    For remediation actions that may affect availability, explicitly note the operational impact.
+13. Environment Awareness:
+    Infer the execution environment (Docker, Kubernetes, Systemd, Nginx) and tailor recommendations accordingly.
+14. Security Severity Classification:
+    Classify suspicious activity using the following progression: Automated reconnaissance, Suspicious activity, Attempted exploitation, Successful exploitation, Confirmed compromise. If exploitation cannot be confirmed, explicitly state: "There is no evidence of successful exploitation in the provided logs."
+15. Evidence Formatting:
+    Every major conclusion must include an Evidence subsection containing the exact supporting log excerpts (Timestamp, Source file/component, Exact log lines).
+16. Blocked Attacks Are Not Outages (Severity Evaluation):
+    If logs show that the application is successfully rejecting unauthorized requests (e.g., returning 401 Unauthorized, 403 Forbidden, or 400 Bad Request) and there are no signs of service degradation (no worker crashes, no restarts, no timeouts, no latency increase, or health-check failures), you MUST classify this as Severity: LOW or MEDIUM, Category: SECURITY / RECONNAISSANCE, and Active Incidents: No. Do not treat successfully blocked reconnaissance or auth failures as active production incidents.
+17. Private Network / Gateway Identification:
+    If the immediate source IP of the logs belongs to a private subnet or internal gateway (such as 172.x.x.x Docker bridge, 10.x.x.x Kubernetes pod network, 192.168.x.x, or 127.0.0.1), you MUST explicitly state in your analysis that this IP represents an internal proxy, container bridge, or gateway rather than the external client IP. Explicitly advise the operator against blocking this gateway IP directly at the firewall to avoid self-inflicted service outages.
+18. Ban Speculative Performance Impact:
+    Do not make speculative statements about performance degradation (e.g., 'this could lead to increased resource utilization' or 'potentially degrade performance') unless there is concrete evidence of system strain (OOMs, CPU spikes, slow responses, worker timeouts) in the provided logs. If no service degradation is visible, explicitly state: 'No service degradation is visible in the provided logs. The application successfully rejected unauthorized requests as expected.'
+
+Format your response EXACTLY like this:
+## 🔥 Emergency Incident Report
+### Status: Critical Outage / Active Exploit
+### Severity: ${severity}
+### Category: ${category}
+### Active Incidents: Yes
+
+You MUST write the severity EXACTLY as "${severity}" and active incidents EXACTLY as "Yes". Do NOT change or override these values under any circumstances, as they are hard-synchronized with the user interface dashboard cards.
+
+---
+### Summary
+[Provide a high-priority, clear summary of the critical outage or exploit, including the immediate failure mechanism.]
+
+### Operational Impact
+[State the exact operational impact (e.g., service downtime, data loss, exposed credentials, blocked users).]
+
+### Recommended Maintenance
+[Provide the critical recovery steps, hotfixes, or configuration patches. Avoid presenting multiple contradictory fixes; present only the single most optimal recovery path.
+You MUST provide a code/configuration modernization example showing a side-by-side or before-and-after comparison in the exact language/technology of the log (e.g. JavaScript, Python, SQL, Nginx config, Dockerfile).
+Use EXACTLY the following formats:
+- For application code bugs/crashes:
+  # ❌ Old (Unsafe/Buggy Code)
+  [Snippet]
+  # ✅ New (Corrected/Safe Code)
+  [Snippet]
+- For database/SQL query errors:
+  # ❌ Old Query
+  [Snippet]
+  # ✅ Optimized Query
+  [Snippet]
+- For infrastructure/network issues (Nginx, Docker, WAF):
+  # ❌ Deprecated/Weak Config
+  [Snippet]
+  # ✅ Hardened/Correct Config
+  [Snippet]
+
+Specific Security Rule:
+If the logs represent automated reconnaissance (e.g., WAF blocks, scanners probing endpoints like /wp-admin, /env, /backup), do NOT suggest application code changes. Instead, focus the mitigation on WAF rules, Nginx rate-limiting (limit_req_zone), or Fail2ban setups.
+
+Specific Override Rule:
+If (and only if) the logs contain the Python Firestore positional arguments warning, you MUST recommend ONLY the following exact migration example:
+# ❌ Old (Deprecated - triggers UserWarning)
+query = db.collection("your_collection").where("field_path", "==", "value")
+
+# ✅ New (Warning-free, production-grade)
+from google.cloud.firestore import FieldFilter
+
+query = db.collection("your_collection").where(
+    filter=FieldFilter("field_path", "==", "value")
+)
+Do NOT present multiple alternative syntaxes, do NOT suggest query.filter(), and do NOT recommend query.where(field_path, "==", value). Present ONLY this single correct fix.]
+
+### Investigation Required
+The logs indicate a critical failure, crash, or exploit. The exact source file, line number, or application code responsible cannot be determined from logs alone.
+
+Suggested commands to locate the offending code in your repository:
+[Provide a list of highly specific, context-appropriate shell commands (using grep, find, npm, pip, etc.) in a \`\`\`bash block to help the operator locate the exact offending code or configuration in their repository based on the error. For example:
+- If a Node/npm warning: Suggest 'npm ls' or grep for the package.
+- If a Python warning: Suggest grep for the module or function name.
+- If Nginx/Docker: Suggest grep or find command for the configuration path.]
+
+### Maintenance Priority
+CRITICAL. Immediate action required.
+
+### Evidence Quality
+Evidence Strength: [Must be exactly HIGH, MEDIUM, or LOW]
+Reason:
+- [Provide 2-3 bullet points justifying the evidence strength rating based on logs]
+
+### Confidence
+Confidence: ${confidence}%
+Reason:
+- [Evidence 1]
+- [Evidence 2]
+
+### Fix Confidence
+Fix Confidence: [Must be exactly HIGH, MEDIUM, or LOW]
+Reason:
+- [A brief 1-sentence reason justifying the confidence level of the recovery patch.]
+
+### Operator Recommendation
+[List the immediate mitigation commands the engineer must run right now to stop the bleeding.]
+
+---
+### Technical Analysis
+#### Confidence Levels
+- **CONFIRMED**:
+  - [List facts directly supported by unambiguous log evidence, e.g., worker timeouts, worker restarts, malformed requests, no successful exploitation]
+- **HIGHLY LIKELY**:
+  - [List strong inferences supported by tracebacks/indicators, e.g., service degradation, temporary request failures]
+- **POSSIBLE**:
+  - [List plausible explanations requiring further validation, e.g., OOM conditions (unconfirmed), slow clients keeping sockets open, proxy/HTTP2 misconfigurations]
+- **UNSUPPORTED HYPOTHESES**:
+  - [List common causes/theories that are NOT supported by the current logs, e.g., Database deadlocks, DNS failures, Network partitions, Storage corruption, Successful exploitation attempts, explicitly stating they lack evidence in the current logs]
+
+#### Detailed Investigation
+- **Observed Symptoms**: [Observed symptoms]
+- **Immediate Failure Mechanism**: [Immediate failure mechanism, citing traceback details like sock.recv() during HTTP request parse]
+- **Probable Root Causes**: [Probable root causes, distinguishing between slow clients, HTTP/2 mismatch, and memory leaks]
+- **Evidence**: [Evidence citations in the format \`filename:line\`]
+
+### Validation Steps
+[Specify immediate verification commands to validate recovery and prove/disprove the POSSIBLE items listed above, e.g., \`dmesg -T | grep -i oom\`, checking Nginx access logs, or inspecting Gunicorn configurations.]
+
+### Prevention Strategy
+[Outline immediate security hardening or infrastructure scaling measures]`;
+    }
+
+    try {
+      let response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
             },
             {
               role: 'user',
               content: `Analyze this log excerpt and produce a full incident diagnostic report:
 
 \`\`\`
-${logs}
+${cleanedLogs}
 \`\`\``
             }
           ],
@@ -698,9 +1449,57 @@ ${logs}
         })
       });
 
+      let isFallbackUsed = false;
+
       if (!response.ok) {
         const errText = await response.text();
-        console.error('Groq API Error:', errText);
+        console.warn('Primary model llama-3.3-70b-versatile failed. Status:', response.status, 'Error:', errText);
+        
+        let isRateLimit = response.status === 429;
+        try {
+          const errJson = JSON.parse(errText);
+          if (errJson?.error?.message?.toLowerCase().includes('rate limit') || errJson?.error?.code === 'rate_limit_exceeded') {
+            isRateLimit = true;
+          }
+        } catch (_) {}
+
+        if (isRateLimit) {
+          console.warn('Triggering auto-fallback to high-capacity model llama-3.1-8b-instant...');
+          isFallbackUsed = true;
+          response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'llama-3.1-8b-instant',
+              messages: [
+                {
+                  role: 'system',
+                  content: systemPrompt
+                },
+                {
+                  role: 'user',
+                  content: `Analyze this log excerpt and produce a full incident diagnostic report:
+
+\`\`\`
+${cleanedLogs}
+\`\`\``
+                }
+              ],
+              temperature: 0.1,
+              max_tokens: 2048,
+              top_p: 1,
+              stream: false,
+            })
+          });
+        }
+      }
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Groq API Error (after fallback check):', errText);
         let friendlyError = 'Failed to communicate with Groq API';
         try {
           const errJson = JSON.parse(errText);
@@ -717,7 +1516,32 @@ ${logs}
         return res.status(500).json({ error: 'No response generated from Groq.' });
       }
 
-      res.json({ report });
+      const responseData = {
+        severity,
+        category,
+        incident,
+        confidence,
+        report,
+        fallbackUsed: isFallbackUsed
+      };
+
+      // Store in LRU Cache (5-minute TTL)
+      try {
+        diagnosticCache.set(logHash, {
+          expiresAt: Date.now() + 300000, // 5 minutes
+          data: responseData
+        });
+
+        // Enforce max cache size of 50 to keep memory footprint extremely small
+        if (diagnosticCache.size > 50) {
+          const oldestKey = diagnosticCache.keys().next().value;
+          if (oldestKey) diagnosticCache.delete(oldestKey);
+        }
+      } catch (e) {
+        console.error('[SRE Cache Error] Failed to write to diagnostic cache:', e);
+      }
+
+      res.json(responseData);
     } catch (error) {
       console.error('Error in /api/analyze-error:', error);
       res.status(500).json({ error: 'Internal server error during analysis' });
@@ -972,8 +1796,8 @@ ${logs}
   // If fetchSources() is called rapidly (e.g. from docker_event), only ONE SSH
   // connection is opened — all callers await the same promise.
   const pendingDiscovery = new Map();
-  const sourceCache = new Map();
-  const CACHE_TTL_MS = 30000; // 30 seconds cache
+    const sourceCache = new Map();
+    const CACHE_TTL_MS = 600000; // 10 minutes cache (600,000 ms)
 
   server.get('/api/servers/:id/sources', authenticateToken, async (req, res) => {
     const serverId = req.params.id;
@@ -1010,8 +1834,6 @@ ${logs}
       const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
       if (!serverConfig) return res.status(404).json({ error: 'Not found' });
 
-      if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
-
       const ssh = new SSHController(null);
       const promise = ssh.discoverLogSources(serverConfig, type);
 
@@ -1046,7 +1868,6 @@ ${logs}
     try {
       const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
       if (!serverConfig) return res.status(404).json({ error: 'Server not found' });
-      if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
 
       const ssh = new SSHController(null);
       const sources = await ssh.discoverLogSources(serverConfig, `pod-files ${podIdentifier}`);
@@ -1094,7 +1915,6 @@ ${logs}
     try {
       const serverConfig = await get('SELECT * FROM servers WHERE id = ?', [serverId]);
       if (!serverConfig) return res.status(404).json({ error: 'Server not found' });
-      if (serverConfig.privateKey) serverConfig.privateKey = decrypt(serverConfig.privateKey);
 
       const ssh = new SSHController(null);
       const sources = await ssh.discoverLogSources(serverConfig, `container-files ${containerName}`);

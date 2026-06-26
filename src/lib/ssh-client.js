@@ -113,6 +113,36 @@ class SSHController {
     return [finalHeader, ...bodyLines, finalFooter].join('\n');
   }
 
+  static decryptFn = null;
+  static setDecryptFunction(fn) {
+    SSHController.decryptFn = fn;
+  }
+
+  static getEphemeralKey(encryptedKey) {
+    if (!encryptedKey) return null;
+    
+    // Check if the key is encrypted (aes-256-gcm iv:authTag:encrypted format has exactly 2 colons)
+    const isEncrypted = String(encryptedKey).split(':').length === 3;
+    let rawKey = encryptedKey;
+    
+    if (isEncrypted && SSHController.decryptFn) {
+      try {
+        rawKey = SSHController.decryptFn(encryptedKey);
+      } catch (e) {
+        console.error("[SRE Security] Failed to decrypt private key ephemerally:", e.message);
+      }
+    }
+    
+    const sanitized = SSHController.sanitizeKey(rawKey);
+    
+    // Wipe rawKey from memory immediately if it was decrypted
+    if (isEncrypted && rawKey !== encryptedKey) {
+      rawKey = null;
+    }
+    
+    return sanitized;
+  }
+
   // Uses Auto Detection by calling 'discover-sources'
   async discoverLogSources(serverConfig, type = '') {
     let cmd = type ? `discover-sources ${type}` : 'discover-sources';
@@ -121,7 +151,7 @@ class SSHController {
     } else if (type.startsWith('container-files ')) {
       cmd = `discover-container-files ${type.substring(16)}`;
     }
-    const privateKey = SSHController.sanitizeKey(serverConfig.privateKey);
+    let ephemeralKey = SSHController.getEphemeralKey(serverConfig.privateKey);
 
     if (SSHController.isLocal(serverConfig.host)) {
        return new Promise((resolve, reject) => {
@@ -223,7 +253,7 @@ class SSHController {
                      if (err2) {
                         conn.end();
                         return resolve([]);
-                     }
+                      }
                      let output2 = '';
                      stream2.on('data', (data) => output2 += data.toString());
                      stream2.on('close', () => {
@@ -259,24 +289,26 @@ class SSHController {
         host: serverConfig.host,
         port: serverConfig.port,
         username: serverConfig.username,
-        privateKey: privateKey,
+        privateKey: ephemeralKey,
         readyTimeout: 10000,      // Fix #1: fail fast after 10s instead of hanging
         keepaliveInterval: 5000,  // Send keepalives every 5s during discovery
         keepaliveCountMax: 2      // Disconnect after 2 missed keepalives
       });
+      ephemeralKey = null; // Wipe decrypted private key reference immediately from memory
     });
   }
 
   // Actually streams the logs
   connectAndStream(serverConfig, commandStr) {
-    const privateKey = SSHController.sanitizeKey(serverConfig.privateKey);
+    let ephemeralKey = SSHController.getEphemeralKey(serverConfig.privateKey);
 
     if (SSHController.isLocal(serverConfig.host)) {
        if (this.socket) this.socket.emit('terminal:data', '\r\n\x1b[32m[SYSTEM] Securing local stream...\x1b[0m\r\n');
        const wrapperPath = path.resolve(__dirname, '../../log-wrapper.sh');
        
        this.localProcess = spawn(wrapperPath, [], {
-          env: { ...process.env, SSH_ORIGINAL_COMMAND: commandStr }
+          env: { ...process.env, SSH_ORIGINAL_COMMAND: commandStr },
+          detached: true // Spawn in a new process group to prevent orphaned children
        });
 
        this.localProcess.stdout.on('data', (data) => {
@@ -339,11 +371,12 @@ class SSHController {
         host: serverConfig.host,
         port: serverConfig.port,
         username: serverConfig.username,
-        privateKey: privateKey,
+        privateKey: ephemeralKey,
         readyTimeout: 15000,      // 15s to establish stream connection
         keepaliveInterval: 10000, // Send keepalive every 10s
         keepaliveCountMax: 3      // Fix #4: disconnect cleanly after 3 missed keepalives (~30s)
       });
+      ephemeralKey = null; // Wipe decrypted private key reference immediately from memory
     } catch (e) {
       if (this.socket) this.socket.emit('terminal:data', `\r\n\x1b[31m[SYSTEM ERROR] Invalid target server config.\x1b[0m\r\n`);
     }
@@ -356,7 +389,13 @@ class SSHController {
 
   disconnect() {
     if (this.localProcess) {
-      this.localProcess.kill('SIGKILL');
+      try {
+        // Kill the entire process group (negative PID) to reap all spawned sub-processes (tail, grep, etc.)
+        process.kill(-this.localProcess.pid, 'SIGKILL');
+      } catch (e) {
+        // Fallback to direct kill if group kill fails
+        try { this.localProcess.kill('SIGKILL'); } catch (_) {}
+      }
       this.localProcess = null;
     }
     if (this.stream) {
@@ -370,7 +409,7 @@ class SSHController {
   }
 
   static async testConnection(serverConfig) {
-    const privateKey = SSHController.sanitizeKey(serverConfig.privateKey);
+    let ephemeralKey = SSHController.getEphemeralKey(serverConfig.privateKey);
     
     if (SSHController.isLocal(serverConfig.host)) {
       return { success: true, message: 'Local connection is inherently available.' };
@@ -390,10 +429,12 @@ class SSHController {
           host: serverConfig.host,
           port: parseInt(serverConfig.port) || 22,
           username: serverConfig.username,
-          privateKey: privateKey,
+          privateKey: ephemeralKey,
           readyTimeout: 10000 // 10s timeout for testing
         });
+        ephemeralKey = null; // Wipe decrypted private key reference immediately from memory
       } catch (e) {
+        ephemeralKey = null;
         resolve({ success: false, error: e.message });
       }
     });

@@ -27,10 +27,19 @@ Unlike traditional logging stacks that require complex agents and storage, Pulse
 - **🧠 AI Anomaly Diagnostics (Groq Llama-3.3)**: 
   - Real-time error spike monitoring that alerts operators if more than 3 errors (e.g., `ERROR`, `CRITICAL`, `FATAL`) occur in a sliding 10-second window.
   - **One-Click AI Diagnosis**: Powered by Groq and the `llama-3.3-70b-versatile` model, generating detailed incident briefs structured into *Observed Symptoms*, *Immediate Failure Mechanism*, *Probable Root Causes* (with Confidence Classifications), and *Evidence*.
+  - **LRU Diagnostic Cache (API Cost & Speed Optimization)**: Memory-safe server-side LRU Cache with a 5-minute TTL. Generates a SHA-256 hash of log text; identical diagnostics resolve instantly (~10ms) without making expensive network calls to Groq.
+  - **Semantic Log Pruning**: Maximizes LLM token density and lowers API costs by dynamically stripping high-frequency static asset traffic (CSS, JS, images) and standard health-check noise before LLM analysis.
   - **Diagnostic Report Export**: One-click download options to save the diagnostic report as a clean Markdown (`.md`) document or export it as a styled PDF with browser URL print headers and page footers automatically stripped.
 - **🛡️ Hardened Security**:
   - **AES-256-GCM** encryption for SSH private keys at rest.
   - **Restricted Execution**: Uses a security wrapper (`log-wrapper.sh`) on target servers to limit SSH access to log viewing only.
+  - **Ephemeral Credential Decryption (In-Memory Zero-Persistence)**: Private keys remain encrypted during transit through all backend endpoints and are decrypted *only* within the localized scope of the SSH connection handshakes. Immediately after connection initialization, the decrypted key variable is set to `null` to wipe references from Node's memory heap, mitigating risk against heap-dump exploits.
+  - **Detached Process Group Cleanup**: Launches SSH streams in detached process groups and sends a `SIGKILL` to the negative PID on stream disconnect, preventing zombie/orphaned processes and preserving server resources.
+  - **Three-Tier SOC Security State Machine (The Sentinel)**: Dynamically classifies security logs into three enterprise SOC tiers to eliminate false alarms while catching real breaches:
+    - *Protected* (Sensitive path &rarr; 401/403/404): `LOW` severity, `Protected` status, `Active Incidents: No`. Suppresses alert noise.
+    - *Suspicious* (Sensitive path &rarr; 3xx redirect): `MEDIUM` severity, `Suspicious` status, `Active Incidents: Yes`. Alerts the operator to audit redirect configurations.
+    - *Compromised* (Sensitive path &rarr; 200/201, or active RCE/privilege escalation indicators): `CRITICAL` severity, `Compromised` status, `Active Incidents: Yes`. Immediately alerts the team to active exploit attempts.
+  - **RCE Hard Stop Override**: Instantly triggers critical severity if active Remote Code Execution (RCE), shell spawning, or privilege escalation signatures are detected (e.g. `/bin/sh`, `bash -c`, `curl | sh`, `sudo`, `chmod`, `nc -e`, `eval(`, `exec(`).
   - **Role & Group-Based Permissions**: Restrict Viewer operators to specific server groups.
   - **JWT Authentication** with session blacklisting.
 - **⚡ Pro UI/UX**:

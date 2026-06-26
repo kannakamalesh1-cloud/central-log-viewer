@@ -39,6 +39,11 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   const [isAnalyzing, setIsAnalyzing]           = useState(false);
   const [analysisReport, setAnalysisReport]     = useState<string | null>(null);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [analysisSeverity, setAnalysisSeverity]     = useState<string | null>(null);
+  const [analysisCategory, setAnalysisCategory]     = useState<string | null>(null);
+  const [analysisIncident, setAnalysisIncident]     = useState<boolean | null>(null);
+  const [analysisConfidence, setAnalysisConfidence] = useState<number | null>(null);
+  const [fallbackUsed, setFallbackUsed]               = useState(false);
 
   const logBuffer        = useRef<string>('');
   const watchlistRef     = useRef<string[]>([]);
@@ -56,11 +61,11 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
     if (onStatusChange) onStatusChange('stopped');
   }, [serverId, logType, sourceId]);
 
-  // Automatically update search after 400ms of typing inactivity
+  // Automatically update search after 800ms of typing inactivity to prevent unnecessary process spawning
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
       setActiveSearch(searchTerm);
-    }, 400);
+    }, 800);
 
     return () => clearTimeout(delayDebounce);
   }, [searchTerm]);
@@ -73,20 +78,29 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
   const handleAnalyzeSpike = async () => {
     if (!termInstance.current) return;
     
-    // Extract recent logs from the active terminal buffer (last 150 lines)
+    // Extract recent logs from the active terminal buffer (last 60 lines for lightweight efficiency and token safety)
     const buffer = termInstance.current.buffer.active;
     const lines: string[] = [];
-    const startLine = Math.max(0, buffer.length - 150);
+    const startLine = Math.max(0, buffer.length - 60);
     for (let i = startLine; i < buffer.length; i++) {
       const line = buffer.getLine(i);
       if (line) {
         lines.push(line.translateToString());
       }
     }
-    const recentLogs = lines.join('\n');
+    let recentLogs = lines.join('\n');
+    // Absolute safety guard: limit characters to 4000 (~1000 tokens) so it never hits the Groq 6000 TPM limit
+    if (recentLogs.length > 4000) {
+      recentLogs = `[Logs truncated for token limit efficiency]\n...` + recentLogs.substring(recentLogs.length - 4000);
+    }
 
     setIsAnalyzing(true);
     setAnalysisReport(null);
+    setAnalysisSeverity(null);
+    setAnalysisCategory(null);
+    setAnalysisIncident(null);
+    setAnalysisConfidence(null);
+    setFallbackUsed(false);
     setShowAnalysisModal(true);
 
     try {
@@ -94,7 +108,7 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        },
+          },
         body: JSON.stringify({ logs: recentLogs }),
       });
 
@@ -105,8 +119,18 @@ export default function TerminalViewer({ serverId, logType, sourceId, isActiveSl
 
       const data = await res.json();
       setAnalysisReport(data.report);
+      setAnalysisSeverity(data.severity);
+      setAnalysisCategory(data.category);
+      setAnalysisIncident(data.incident);
+      setAnalysisConfidence(data.confidence);
+      setFallbackUsed(!!data.fallbackUsed);
     } catch (err: any) {
       setAnalysisReport(`### ❌ Analysis Failed\n\nUnable to generate report: ${err.message || 'Unknown error'}`);
+      setAnalysisSeverity('CRITICAL');
+      setAnalysisCategory('SYSTEM');
+      setAnalysisIncident(true);
+      setAnalysisConfidence(0);
+      setFallbackUsed(false);
     } finally {
       setIsAnalyzing(false);
     }
@@ -382,7 +406,7 @@ ${analysisReport}`;
           <div class="header-bar">
             <div>
               <div class="logo-text">PULSELOG AI DIAGNOSTIC</div>
-              <div style="font-size: 0.85rem; color: #64748b; font-weight: 600;">POWERED BY GROQ &middot; LLAMA 3.3 70B</div>
+              <div style="font-size: 0.85rem; color: #64748b; font-weight: 600;">POWERED BY GROQ &middot; ${fallbackUsed ? 'LLAMA 3.1 8B (FALLBACK)' : 'LLAMA 3.3 70B'}</div>
             </div>
             <div class="meta-text">
               <strong>Source:</strong> ${sourceId || 'Unknown Server'}<br>
@@ -699,7 +723,13 @@ ${analysisReport}`;
             {/* Modal Header */}
             <div className="flex items-center justify-between px-10 py-6 border-b border-slate-100 bg-slate-50/60 flex-shrink-0">
               <div className="flex items-center gap-4">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-sky-500 via-purple-500 to-indigo-500 shadow-lg shadow-indigo-500/20">
+                <div className={`p-2.5 rounded-2xl bg-gradient-to-tr shadow-lg shadow-indigo-500/20 transition-all duration-350 ${
+                  analysisSeverity === 'CRITICAL' ? 'from-rose-500 via-red-600 to-amber-600' :
+                  analysisSeverity === 'HIGH' ? 'from-red-500 via-rose-500 to-orange-500' :
+                  analysisSeverity === 'MEDIUM' ? 'from-amber-500 to-orange-500' :
+                  analysisSeverity === 'LOW' ? 'from-yellow-400 to-amber-500' :
+                  'from-emerald-500 to-sky-500'
+                }`}>
                   <Sparkles className="w-6 h-6 text-white animate-pulse" />
                 </div>
                 <div>
@@ -707,7 +737,7 @@ ${analysisReport}`;
                     PulseLog AI Diagnostic
                   </h3>
                   <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                    Powered by Groq · Llama 3.3 70B
+                    Powered by Groq · {fallbackUsed ? 'Llama 3.1 8B (Fallback)' : 'Llama 3.3 70B'}
                   </p>
                 </div>
               </div>
@@ -721,19 +751,69 @@ ${analysisReport}`;
 
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto px-10 py-8 select-text">
-              {/* Metadata strip */}
-              <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-red-500" />
-                  <span>Severity: <span className="text-red-500">Critical</span></span>
+              
+              {/* Dynamic SRE Dashboard Strip */}
+              {analysisReport && !isAnalyzing && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                  {/* Severity Pill */}
+                  <div className={`flex items-center justify-between px-5 py-4 rounded-2xl border transition-all duration-300 ${
+                    analysisSeverity === 'CRITICAL' ? 'bg-rose-50 border-rose-200 text-rose-700' :
+                    analysisSeverity === 'HIGH' ? 'bg-red-50 border-red-200 text-red-700' :
+                    analysisSeverity === 'MEDIUM' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                    analysisSeverity === 'LOW' ? 'bg-yellow-50/50 border-yellow-200/60 text-yellow-700' :
+                    'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  }`}>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black uppercase tracking-widest opacity-60">Severity</span>
+                      <span className="text-sm font-black tracking-tight mt-0.5">{analysisSeverity || 'UNKNOWN'}</span>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                      analysisSeverity === 'CRITICAL' ? 'bg-rose-500 animate-ping' :
+                      analysisSeverity === 'HIGH' ? 'bg-red-500 animate-pulse' :
+                      analysisSeverity === 'MEDIUM' ? 'bg-amber-500' :
+                      analysisSeverity === 'LOW' ? 'bg-yellow-500' :
+                      'bg-emerald-500'
+                    }`} />
+                  </div>
+
+                  {/* Category Pill */}
+                  <div className="flex flex-col px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Category</span>
+                    <span className="text-sm font-black text-slate-700 tracking-tight mt-0.5">{analysisCategory || 'APPLICATION'}</span>
+                  </div>
+
+                  {/* Incident Status Pill */}
+                  <div className={`flex items-center justify-between px-5 py-4 rounded-2xl border transition-all duration-300 ${
+                    analysisIncident ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  }`}>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black uppercase tracking-widest opacity-60">Incident Status</span>
+                      <span className="text-sm font-black tracking-tight mt-0.5">
+                        {analysisIncident ? 'ACTIVE INCIDENT' : 'OPERATIONAL'}
+                      </span>
+                    </div>
+                    <span className="text-xs font-extrabold">{analysisIncident ? '🚨' : '🟢'}</span>
+                  </div>
+
+                  {/* Confidence Pill */}
+                  <div className="flex flex-col px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Confidence</span>
+                      <span className="text-xs font-black text-slate-700">{analysisConfidence || 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2.5 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          (analysisConfidence || 0) >= 90 ? 'bg-emerald-500' :
+                          (analysisConfidence || 0) >= 75 ? 'bg-amber-500' :
+                          'bg-red-500'
+                        }`}
+                        style={{ width: `${analysisConfidence || 0}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span>Source: {sourceId?.split('/').pop()?.toUpperCase() || 'UNKNOWN'}</span>
-                </div>
-                <div>
-                  <span>Time: {new Date().toLocaleTimeString()}</span>
-                </div>
-              </div>
+              )}
 
               {isAnalyzing ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-6">
