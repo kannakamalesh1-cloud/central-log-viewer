@@ -205,5 +205,23 @@ PulseLog is designed with a "Zero-Trust" mindset for log viewing:
 
 ---
 
+## 🔮 Future Roadmap (v1.1+)
+
+Following the successful **v1.0 Production Release**, the following architectural enhancements have been approved for the next development cycle to further refine context-awareness and metrics isolation:
+
+1. **Dimensional Metric Separation (Security vs. Operations)**:
+   - Decouple security event analysis from operational server diagnostics by tracking `securityScore` and `operationalScore` as independent vectors.
+   - Prevent blended scores so that a high volume of internet scanner activity does not inflate operational application severity metrics (e.g., keeping a high-volume scan categorized as `SECURITY: LOW` while a single critical database timeout is correctly escalated as `APPLICATION: HIGH`).
+2. **Context-Aware IP Classification (Internal vs. External)**:
+   - Introduce network boundary awareness. 
+   - Parse client IP addresses to treat whitelisted parser warnings (e.g., `Invalid HTTP Version`) as harmless scanner noise ONLY when originating from external IPs, while immediately escalating them to `HIGH` severity if they originate from internal proxies (e.g., `10.x.x.x` or loopback addresses), signaling an active infrastructure misconfiguration.
+3. **Config-Driven Security Heuristics**:
+   - Move hardcoded harmless patterns and protocol abuse signatures into a structured configuration file (YAML/JSON).
+   - Allow operators to customize rules, suppress specific local scanner noise, or escalate proprietary protocol anomalies without modifying the core codebase.
+4. **AI Confidence Ceilings**:
+   - Enforce realistic confidence ceilings in the AI system prompts (e.g., capping `CRITICAL` confidence at `95%` and `HIGH` at `90%`) to align diagnostic outputs with standard SRE humility and prevent speculative overconfidence.
+
+---
+
 ## 📄 License
 MIT License. See [LICENSE](LICENSE) for details.

@@ -559,10 +559,10 @@ app.prepare().then(async () => {
       // Filter out high-frequency successful static asset and health check traffic
       if (/\/(healthz|health|ping|status)\b.*200/i.test(trimmed)) return false;
       if (/\.(css|js|png|jpe?g|gif|svg|ico|woff2?|map)\b.*(200|304)/i.test(trimmed)) return false;
-      
+
       return true;
     });
-    
+
     return prunedLines.join('\n');
   }
 
@@ -622,16 +622,35 @@ app.prepare().then(async () => {
 
       // Tier C: General Application Errors & Exceptions (+5 to +8 per instance)
       // Uses lookaheads to ignore healthy metrics (e.g., "failed=0", "errors=0")
-      const errorMatches = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
+      const totalErrors = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
+      
+      // Whitelist of known harmless client-side scanner errors (discounted from general error count)
+      const lines = logs.split('\n');
+      let harmlessErrorCount = 0;
+      for (const line of lines) {
+        if (/invalid\s+Header\s+provided|Invalid\s+HTTP\s+Version|Invalid\s+HTTP\s+request\s+line:\s*''/i.test(line)) {
+          if (/\berror(s)?\b/i.test(line)) {
+            harmlessErrorCount++;
+          }
+        }
+      }
+      const realErrorMatches = Math.max(0, totalErrors - harmlessErrorCount);
+
       const failedMatches = (logs.match(/\bfailed(?![:=]\s*(0|false)\b)\b/gi) || []).length;
       const exceptionMatches = (logs.match(/\bexception\b/gi) || []).length;
-      score += errorMatches * 5;
+      score += realErrorMatches * 5;
       score += failedMatches * 5;
       score += exceptionMatches * 8;
 
       // Tier D: Bad Requests, Client Errors, and Parser Warnings (+1 to +3)
       if (/request parse error/i.test(logs)) {
-        score += 3;
+        // High-risk protocol abuse (like smuggling or buffer overflow attempts) must not be ignored
+        const isProtocolAbuse = /header\s+too\s+large|chunked\s+encoding\s+invalid|content-length\s+mismatch/i.test(logs);
+        if (isProtocolAbuse) {
+          score += 15; // Escalate protocol abuse to MEDIUM/HIGH category
+        } else {
+          score += 3;
+        }
       }
       if (/\b404\b/.test(logs)) {
         score += 2;
@@ -674,7 +693,7 @@ app.prepare().then(async () => {
         return "MEDIUM";
       if (score > 0)
         return "LOW";
-      
+
       return "INFO"; // Perfect operational state
     }
 
@@ -723,7 +742,7 @@ app.prepare().then(async () => {
 
       let hasSensitiveSuccess = false;
       let hasSensitiveRedirect = false;
-      
+
       const lines = logs.split('\n');
       for (const line of lines) {
         const isTarget = SENSITIVE_PATH_REGEX.test(line);
@@ -742,7 +761,7 @@ app.prepare().then(async () => {
       if (hasSensitiveSuccess) {
         return 'COMPROMISED';
       }
-      
+
       if (hasSensitiveRedirect) {
         return 'SUSPICIOUS';
       }
@@ -750,11 +769,29 @@ app.prepare().then(async () => {
       // Check if it qualifies as a Protected Blocked Scan
       // Hard signals of system failures, active crashes, or tracebacks must fall back to standard error handling.
       const hasCrashes = /OOMKilled|Out of memory|Segmentation fault|SIGSEGV|kernel panic|OOM\s*kill|CrashLoopBackOff|WORKER TIMEOUT/i.test(logs);
-      const errorCount = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
+      
+      // Count total occurrences of the word "error"
+      const totalErrors = (logs.match(/\berror(s)?(?!s?[:=]\s*(0|false)\b)\b/gi) || []).length;
+      
+      // Whitelist of known harmless client-side scanner errors (discounted from general error count)
+      const lines = logs.split('\n');
+      let harmlessErrorCount = 0;
+      for (const line of lines) {
+        if (/invalid\s+Header\s+provided|Invalid\s+HTTP\s+Version|Invalid\s+HTTP\s+request\s+line:\s*''/i.test(line)) {
+          if (/\berror(s)?\b/i.test(line)) {
+            harmlessErrorCount++;
+          }
+        }
+      }
+      const realErrorCount = Math.max(0, totalErrors - harmlessErrorCount);
+      
       const exceptionCount = (logs.match(/\bexception\b/gi) || []).length;
       const tracebackCount = (logs.match(/\btraceback\b/gi) || []).length;
 
-      if (hasCrashes || errorCount > 3 || exceptionCount > 0 || tracebackCount > 0) {
+      // High-risk protocol abuse (like smuggling or buffer overflow attempts) must never be classified as a protected scan
+      const hasProtocolAbuse = /header\s+too\s+large|chunked\s+encoding\s+invalid|content-length\s+mismatch/i.test(logs);
+
+      if (hasCrashes || realErrorCount > 3 || exceptionCount > 0 || tracebackCount > 0 || hasProtocolAbuse) {
         return 'STANDARD_ERROR';
       }
 
@@ -806,7 +843,7 @@ app.prepare().then(async () => {
       incident = severity === 'HIGH' || severity === 'CRITICAL';
       confidence = severity === 'INFO' ? 98 : severity === 'LOW' ? 95 : severity === 'MEDIUM' ? 90 : 85;
     }
-    
+
     let systemPrompt = '';
 
     // 3. Dynamic System Prompt Router (Standardized SRE Structures)
@@ -1026,7 +1063,7 @@ Reason:
 
 ### Operator Recommendation
 No action required during active operations. All systems are performing normally.`;
-    } 
+    }
     else if (severity === 'LOW' || severity === 'MEDIUM') {
       systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE).
 Your job is to analyze the provided logs and generate a professional "Maintenance Recommendation".
@@ -1121,7 +1158,7 @@ Reason:
 
 ### Operator Recommendation
 No action required during active operations. Schedule this update as part of normal dependency maintenance.`;
-    } 
+    }
     else if (severity === 'HIGH') {
       systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE) and Systems Administrator.
 Your job is to analyze the provided log snippet and generate a highly accurate "Root Cause Analysis & Incident Report".
@@ -1270,7 +1307,7 @@ Reason:
 
 ### Prevention Strategy
 [Outline long-term preventative measures to avoid recurrence]`;
-    } 
+    }
     else if (severity === 'CRITICAL') {
       systemPrompt = `You are an expert Senior Site Reliability Engineer (SRE) and Systems Administrator.
 Your job is to analyze the provided logs and generate an urgent "Emergency Incident Report".
@@ -1454,14 +1491,14 @@ ${cleanedLogs}
       if (!response.ok) {
         const errText = await response.text();
         console.warn('Primary model llama-3.3-70b-versatile failed. Status:', response.status, 'Error:', errText);
-        
+
         let isRateLimit = response.status === 429;
         try {
           const errJson = JSON.parse(errText);
           if (errJson?.error?.message?.toLowerCase().includes('rate limit') || errJson?.error?.code === 'rate_limit_exceeded') {
             isRateLimit = true;
           }
-        } catch (_) {}
+        } catch (_) { }
 
         if (isRateLimit) {
           console.warn('Triggering auto-fallback to high-capacity model llama-3.1-8b-instant...');
@@ -1796,8 +1833,8 @@ ${cleanedLogs}
   // If fetchSources() is called rapidly (e.g. from docker_event), only ONE SSH
   // connection is opened — all callers await the same promise.
   const pendingDiscovery = new Map();
-    const sourceCache = new Map();
-    const CACHE_TTL_MS = 600000; // 10 minutes cache (600,000 ms)
+  const sourceCache = new Map();
+  const CACHE_TTL_MS = 600000; // 10 minutes cache (600,000 ms)
 
   server.get('/api/servers/:id/sources', authenticateToken, async (req, res) => {
     const serverId = req.params.id;
